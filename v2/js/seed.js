@@ -11,10 +11,11 @@ export function sampleTournament() {
   const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
   const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
 
-  // Tees + per-hole PAR + per-hole STROKE INDEX from the official scorecards & BlueGolf
-  // detailed scorecards (user-provided). Legacy & Talamore stroke indexes are from the
-  // BlueGolf handicap row (authoritative). Mid South's BlueGolf card showed no handicap
-  // row, so its stroke index is from secondary research (par matches the card; verify).
+  // Tees + per-hole PAR + per-hole STROKE INDEX, all from official scorecards (user-provided):
+  // Mid South from the official Arnold Palmer card; Legacy & Talamore from BlueGolf detailed
+  // scorecards (handicap rows decoded and validated as 1-18 permutations). Default tee per
+  // round is Blue. One open item: Legacy plays holes 16/18 per BlueGolf (h16 par4 / h18 par5),
+  // which differed from a secondary image card — confirm on the physical card if it matters.
   const mkHoles = (arr) => arr.map(([par, si]) => ({ par, si }));
 
   // Legacy Golf Links — Aberdeen, NC — par 72 (F36/B36). Tees, par & SI from BlueGolf.
@@ -30,17 +31,19 @@ export function sampleTournament() {
       [4, 4], [3, 10], [4, 12], [5, 14], [4, 6], [4, 16], [4, 2], [3, 18], [5, 8]]),
   };
 
-  // Mid South Club — Southern Pines, NC — par 71 (F36/B35). Tees+par: card. SI: research (verify).
+  // Mid South Club — Southern Pines, NC — par 71 (F36/B35). All from the official
+  // Arnold Palmer scorecard (tees, par, and men's handicap row).
   const midsouth = {
     id: 'midsouth', name: 'Mid South Club',
     tees: {
-      'mid-black': { name: 'Black', rating: 73.8, slope: 144 },
+      'mid-gold': { name: 'Gold', rating: 73.8, slope: 144 },
       'mid-blue': { name: 'Blue', rating: 71.9, slope: 134 },
       'mid-white': { name: 'White', rating: 69.9, slope: 128 },
       'mid-green': { name: 'Green', rating: 68.0, slope: 117 },
+      'mid-red': { name: 'Red', rating: 63.5, slope: 111 },
     },
-    holes: mkHoles([[4, 11], [4, 3], [3, 17], [5, 9], [4, 1], [3, 15], [4, 13], [4, 7], [5, 5],
-      [4, 12], [3, 18], [4, 2], [4, 10], [4, 4], [5, 14], [4, 8], [3, 16], [4, 6]]),
+    holes: mkHoles([[4, 12], [4, 4], [3, 18], [5, 6], [4, 14], [3, 16], [4, 8], [4, 10], [5, 2],
+      [4, 11], [3, 17], [4, 13], [4, 5], [4, 7], [5, 1], [4, 9], [3, 15], [4, 3]]),
   };
 
   // Talamore (Resort course) — Southern Pines, NC — par 71 (F36/B35). Tees, par & SI from BlueGolf.
