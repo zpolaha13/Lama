@@ -107,10 +107,10 @@ function viewEmpty() {
     <h2>Welcome to your Golf Trip</h2>
     <p class="muted">Your trip is one <b>Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your <b>team</b>. First team to the target wins the Cup.</p>
     <div class="btn-row" style="margin-top:16px">
-      <button class="btn" data-action="load-sample">Load the sample trip</button>
-      <button class="btn secondary" data-action="tab" data-tab="setup">Build in Setup ⚙️</button>
+      <button class="btn" data-action="load-sample">⛳ Load our trip (12 players, 3 rounds)</button>
+      <button class="btn secondary" data-action="tab" data-tab="setup">Build from scratch ⚙️</button>
     </div>
-    <p class="muted" style="margin-top:12px;font-size:13px">The sample loads the 3-round Pinehurst trip so you can explore, then edit everything in Setup — or build from scratch.</p>
+    <p class="muted" style="margin-top:12px;font-size:13px">Loads the real field (Red vs Blue, 6 v 6) and all three days' matchups at Legacy, Mid South &amp; Talamore. You can edit anything in Setup afterward.</p>
   </div></div>`;
 }
 
@@ -653,7 +653,7 @@ function viewSetup() {
   </div>`;
 
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
-    <button class="btn secondary small" data-action="load-sample">Reload sample</button>
+    <button class="btn secondary small" data-action="load-sample">Load our trip (12 players)</button>
     <button class="btn secondary small" data-action="export">Export</button>
     <button class="btn danger small" data-action="clear">Clear all</button>
   </div></div>`;
