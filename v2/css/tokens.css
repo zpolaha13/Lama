@@ -1,0 +1,55 @@
+/* =========================================================================
+ * tokens.css — Design tokens (CSS variables). Light + dark ("Tournament Navy").
+ * ========================================================================= */
+:root {
+  /* brand */
+  --green: #1B7A3D;
+  --green-press: #0F5130;
+  --gold: #F5A623;
+
+  /* to-par semantics (Augusta convention) */
+  --under: #D0021B;      /* under par = red */
+  --evenover: #14181B;   /* even/over = charcoal */
+  --gain: #2E9E54;
+  --loss: #D0021B;
+
+  /* surfaces (light) */
+  --bg: #FFFFFF;
+  --surface: #F6F7F8;
+  --surface-2: #FFFFFF;
+  --hairline: #E3E6E8;
+  --ink: #14181B;
+  --muted: #5B6770;
+  --shadow: 0 1px 2px rgba(16,32,24,.06), 0 2px 8px rgba(16,32,24,.06);
+
+  /* spacing scale (8pt) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+
+  --maxw: 760px;
+  --tabbar-h: 64px;
+  --header-h: 96px;
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --num: 'SF Mono', 'Roboto Mono', ui-monospace, 'Menlo', monospace;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0C1620;
+  --surface: #16242F;
+  --surface-2: #1B2D3A;
+  --hairline: #243441;
+  --ink: #F2F5F7;
+  --muted: #9FB0BC;
+  --evenover: #E7ECEF;
+  --under: #FF5A6E;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.35);
+}
+
+/* "Sunlight Boost" — bigger numerals, punchier contrast for on-course glare */
+:root[data-boost='1'] {
+  --under: #E60016;
+  --gold: #FFB31A;
+}
+:root[data-boost='1'] .num,
+:root[data-boost='1'] .topar { font-weight: 800; }

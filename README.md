@@ -1,3 +1,9 @@
+> **🚧 Redesign in progress (`/v2`).** A ground-up rebuild as a proper
+> **tournament** (rounds → formats → one running team score, two-level live
+> leaderboards, mobile-first UX) is underway in [`v2/`](v2/). Preview it at
+> `…/Lama/v2/` once Pages deploys. Plan: [`docs/REDESIGN-PLAN.md`](docs/REDESIGN-PLAN.md).
+> The app below (v1) keeps working until v2 is ready to take over.
+
 # ⛳ Golf Trip Live Scoring
 
 A self-contained web app for running a handicapped, Ryder-Cup-style golf trip —

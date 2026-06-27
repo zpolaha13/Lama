@@ -1,0 +1,10 @@
+{
+  "name": "golf-trip-v2",
+  "version": "0.1.0",
+  "description": "Golf Trip tournament app (redesign). No build step; ES modules served statically.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.mjs"
+  }
+}
