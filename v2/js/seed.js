@@ -11,49 +11,50 @@ export function sampleTournament() {
   const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
   const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
 
-  // Researched from public databases (18Birdies / GolfLink / BlueGolf summaries).
-  // Tee ratings/slopes: medium-high confidence. Verify against each course's
-  // printed scorecard before the trip — especially Legacy's per-hole par/SI,
-  // which could not be sourced and is still the par-4/SI-1..18 placeholder.
+  // Tee ratings/slopes and per-hole PAR are from the official scorecards (user-provided).
+  // Per-hole STROKE INDEX is from research (par matches the cards, but the cards did not
+  // show a handicap row) — VERIFY the stroke-index row before the trip. Legacy SI is a
+  // placeholder (1..18) until its handicap row is supplied.
   const mkHoles = (arr) => arr.map(([par, si]) => ({ par, si }));
 
-  // Legacy Golf Links — Aberdeen, NC — par 72. Tees solid; HOLE par/SI NOT sourced (placeholder).
+  // Legacy Golf Links — Aberdeen, NC — par 72 (front 36 / back 36). Tees + par: scorecard.
   const legacy = {
     id: 'legacy', name: 'Legacy Golf Links',
     tees: {
-      'legacy-gold': { name: 'Gold', rating: 74.4, slope: 139 },
-      'legacy-blue': { name: 'Blue', rating: 72.2, slope: 134 },
-      'legacy-white': { name: 'White', rating: 69.6, slope: 130 },
-      'legacy-green': { name: 'Green', rating: 66.5, slope: 117 },
-      'legacy-red': { name: 'Red', rating: 63.9, slope: 113 },
+      'legacy-black': { name: 'Black', rating: 73.9, slope: 133 },
+      'legacy-blue': { name: 'Blue', rating: 71.4, slope: 127 },
+      'legacy-white': { name: 'White', rating: 68.9, slope: 123 },
+      'legacy-green': { name: 'Green', rating: 68.7, slope: 120 },
     },
-    holes: holes(), // PLACEHOLDER — enter real par + stroke index from the scorecard
+    // par from scorecard; SI = PLACEHOLDER (need Legacy's handicap row)
+    holes: mkHoles([[4, 1], [5, 2], [4, 3], [4, 4], [3, 5], [5, 6], [4, 7], [4, 8], [3, 9],
+      [4, 10], [3, 11], [4, 12], [5, 13], [4, 14], [4, 15], [5, 16], [3, 17], [4, 18]]),
   };
 
-  // Mid South Club — Southern Pines, NC — par 71 (front 36 / back 35).
+  // Mid South Club — Southern Pines, NC — par 71 (front 36 / back 35). Tees + par: scorecard.
   const midsouth = {
     id: 'midsouth', name: 'Mid South Club',
     tees: {
-      'mid-gold': { name: 'Gold', rating: 73.8, slope: 146 },
-      'mid-blue': { name: 'Blue', rating: 72.1, slope: 139 },
-      'mid-white': { name: 'White', rating: 70.0, slope: 132 },
-      'mid-green': { name: 'Green', rating: 67.8, slope: 122 },
-      'mid-red': { name: 'Red', rating: 63.9, slope: 113 },
+      'mid-black': { name: 'Black', rating: 73.8, slope: 144 },
+      'mid-blue': { name: 'Blue', rating: 71.9, slope: 134 },
+      'mid-white': { name: 'White', rating: 69.9, slope: 128 },
+      'mid-green': { name: 'Green', rating: 68.0, slope: 117 },
     },
+    // par: scorecard. SI: research (verify).
     holes: mkHoles([[4, 11], [4, 3], [3, 17], [5, 9], [4, 1], [3, 15], [4, 13], [4, 7], [5, 5],
       [4, 12], [3, 18], [4, 2], [4, 10], [4, 4], [5, 14], [4, 8], [3, 16], [4, 6]]),
   };
 
-  // Talamore (Resort course) — Southern Pines, NC — par 71 (front 36 / back 35).
+  // Talamore (Resort course) — Southern Pines, NC — par 71 (front 36 / back 35). Tees + par: scorecard.
   const talamore = {
     id: 'talamore', name: 'Talamore Golf Resort',
     tees: {
-      'tal-gold': { name: 'Gold', rating: 71.4, slope: 140 },
-      'tal-blue': { name: 'Blue', rating: 68.7, slope: 136 },
-      'tal-white': { name: 'White', rating: 66.0, slope: 132 },
-      'tal-green': { name: 'Green', rating: 63.1, slope: 125 },
-      'tal-red': { name: 'Red', rating: 63.1, slope: 106 },
+      'tal-gold': { name: 'Gold', rating: 73.2, slope: 140 },
+      'tal-blue': { name: 'Blue', rating: 70.8, slope: 134 },
+      'tal-white': { name: 'White', rating: 68.7, slope: 126 },
+      'tal-red': { name: 'Red', rating: 64.5, slope: 109 },
     },
+    // par: scorecard. SI: research (verify).
     holes: mkHoles([[5, 4], [3, 16], [4, 6], [5, 14], [3, 18], [4, 12], [4, 2], [4, 8], [4, 10],
       [4, 7], [5, 15], [4, 5], [3, 17], [4, 9], [3, 13], [4, 1], [4, 11], [4, 3]]),
   };
