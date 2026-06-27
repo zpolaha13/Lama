@@ -84,6 +84,16 @@ fireClick({ action: 'auto-pair', id: 'r1' }); check('auto-pair-12');
 fireChange({ action: 'round-ppm', id: 'r1' }, '2');
 fireChange({ action: 'round-hcpallow', id: 'r1' }, '80');
 fireChange({ action: 'round-hcpmode', id: 'r1' }, 'relative'); check('round-config');
+// course editor + tee selection
+fireClick({ action: 'add-course' }); check('add-course');
+fireChange({ action: 'tee-rating', cid: 'legacy', id: 'legacy-blue' }, '72.3');
+fireChange({ action: 'tee-slope', cid: 'legacy', id: 'legacy-blue' }, '135');
+fireChange({ action: 'hole-par', cid: 'legacy', h: '0' }, '5');
+fireChange({ action: 'hole-si', cid: 'legacy', h: '0' }, '3');
+fireClick({ action: 'add-tee', cid: 'legacy' }); check('course-edit');
+fireClick({ action: 'holes-9', cid: 'legacy' }); fireClick({ action: 'holes-18', cid: 'legacy' }); check('holes-toggle');
+fireChange({ action: 'round-tee', id: 'r1' }, 'legacy-white'); check('round-tee');
+fireChange({ action: 'round-tee-override', rid: 'r1', pid: 'p1' }, 'legacy-blue'); check('tee-override');
 fireClick({ action: 'del-player', id: 'p12' }); check('del-player');
 
 // how-it-works sheet

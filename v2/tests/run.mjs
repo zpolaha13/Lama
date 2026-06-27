@@ -40,7 +40,7 @@ eq(G.matchText(mc, 'Red', 'Blue'), 'Red won 3 & 2', 'closeout text');
 /* ---------------- standings (tournament model) ---------------- */
 function mkState(weightMode) {
   const H = holes.map((h) => ({ par: 4, si: h.si }));
-  return {
+  const st = {
     schemaVersion: 2,
     tournament: { id: 't', name: 'T', winPoints: 1, tiePoints: 0.5, weightMode: weightMode || 'true', normalizeTarget: 4, roundOrder: ['r1', 'r2', 'r3'] },
     squads: { red: { name: 'Red', color: '#f00' }, blue: { name: 'Blue', color: '#00f' } },
@@ -69,6 +69,8 @@ function mkState(weightMode) {
         scores: {}, teamScores: {} },
     },
   };
+  Object.keys(st.players).forEach((k) => { st.players[k].id = k; });
+  return st;
 }
 
 // R1: red wins all 4 singles (red shoots 4, blue 5 everywhere)
@@ -145,6 +147,21 @@ stH.rounds.r1.scoringRule = { handicapAllowance: 80, handicapMode: 'relative' };
 const hRel = matchHandicaps(stH, stH.rounds.r1, stH.rounds.r1.pairings[0]);
 eq(hRel.byPlayer.p1, 5, 'relative p1 gets 5 (8-3)');
 eq(hRel.byPlayer.q1, 0, 'relative low man plays scratch');
+
+/* ---------------- tee selection drives course handicap ---------------- */
+const stT = mkState('true');
+// give the course two tees with different slope/rating
+stT.courses.c1.tees = { white: { name: 'White', rating: 70, slope: 113 }, blue: { name: 'Blue', rating: 74, slope: 140 } };
+stT.players.p1.index = 12;
+// round default tee = white -> CH = 12*113/113 + (70-72) = 12 - 2 = 10
+stT.rounds.r1.defaultTeeId = 'white';
+eq(chFor(stT, stT.players.p1, stT.rounds.r1), 10, 'white tee CH 10');
+// per-player override to blue -> 12*140/113 + (74-72) = 14.87 + 2 = 16.87 -> 17
+stT.rounds.r1.teeOverrides = { p1: 'blue' };
+eq(chFor(stT, stT.players.p1, stT.rounds.r1), 17, 'blue tee override CH 17');
+// clearing override falls back to round default tee
+delete stT.rounds.r1.teeOverrides.p1;
+eq(chFor(stT, stT.players.p1, stT.rounds.r1), 10, 'fallback to round tee');
 
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

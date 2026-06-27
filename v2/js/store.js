@@ -47,8 +47,14 @@ export function update(mutator) {
   notify();
 }
 
+/* Ensure every player object knows its own id (overrides/lookups depend on it). */
+function normalize(s) {
+  if (s && s.players) Object.keys(s.players).forEach((k) => { if (s.players[k]) s.players[k].id = k; });
+  return s;
+}
+
 export function replaceAll(next) {
-  state = Object.assign(emptyState(), next);
+  state = normalize(Object.assign(emptyState(), next));
   persist();
   notify();
 }
@@ -63,7 +69,7 @@ export function importJSON(json) { replaceAll(typeof json === 'string' ? JSON.pa
 export function init() {
   try {
     const cached = localStorage.getItem(LS_KEY);
-    if (cached) state = Object.assign(emptyState(), JSON.parse(cached));
+    if (cached) state = normalize(Object.assign(emptyState(), JSON.parse(cached)));
   } catch (e) { /* ignore */ }
   notify();
 }

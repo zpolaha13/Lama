@@ -24,13 +24,21 @@ function teeFor(course, teeId) {
   return course.tees[teeId] || course.tees[Object.keys(course.tees)[0]] || null;
 }
 
-/* Course handicap for a player in a round (resolves tee + per-round override). */
+/* Resolve which tee a player plays in a round:
+ * per-player override → round's default tee → player's default → course's first tee. */
+export function resolveTeeId(state, player, round) {
+  const course = state.courses[round.courseId];
+  if (!course || !course.tees) return null;
+  let teeId = (round.teeOverrides && round.teeOverrides[player.id]) || round.defaultTeeId || (player && player.defaultTeeId);
+  if (!teeId || !course.tees[teeId]) teeId = Object.keys(course.tees)[0] || null;
+  return teeId;
+}
+
+/* Course handicap for a player in a round (uses the resolved tee's slope/rating). */
 export function chFor(state, player, round) {
   const course = state.courses[round.courseId];
   if (!course || !player) return 0;
-  let teeId = player.defaultTeeId;
-  if (round.teeOverrides && round.teeOverrides[player.id]) teeId = round.teeOverrides[player.id];
-  const tee = teeFor(course, teeId);
+  const tee = course.tees ? course.tees[resolveTeeId(state, player, round)] : null;
   return courseHandicap(Number(player.index) || 0, tee ? tee.slope : 113, tee ? tee.rating : null, coursePar(course));
 }
 

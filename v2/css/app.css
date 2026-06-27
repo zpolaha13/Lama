@@ -162,6 +162,8 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--s2); }
 .list-row { display: flex; align-items: center; gap: var(--s2); padding: 10px; border: 1px solid var(--hairline); border-radius: var(--r-sm); margin-bottom: var(--s2); }
+.hcell { width: 46px; text-align: center; padding: 6px 2px; font-size: 14px; }
+.hcell::-webkit-outer-spin-button, .hcell::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* ---------- explainer sheet ---------- */
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }

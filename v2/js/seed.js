@@ -11,15 +11,22 @@ export function sampleTournament() {
   const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
   const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
 
-  const teeId = 'tee-white';
-  const course = (id, name, rating, slope) => ({
-    id, name, tees: { [teeId]: { name: 'White', rating, slope } }, holes: holes(),
+  const course = (id, name, tees) => ({ id, name, tees, holes: holes() });
+  // Each course has its own tees (placeholder rating/slope — edit in Setup).
+  const legacy = course('legacy', 'Legacy Golf Links', {
+    'legacy-blue': { name: 'Blue', rating: 71.5, slope: 130 },
+    'legacy-white': { name: 'White', rating: 69.6, slope: 124 },
   });
-  const legacy = course('legacy', 'Legacy Golf Links', 71.5, 130);
-  const midsouth = course('midsouth', 'Mid South Club', 72.0, 133);
-  const talamore = course('talamore', 'Talamore Golf Resort', 71.0, 132);
+  const midsouth = course('midsouth', 'Mid South Club', {
+    'mid-blue': { name: 'Blue', rating: 72.0, slope: 133 },
+    'mid-white': { name: 'White', rating: 70.1, slope: 126 },
+  });
+  const talamore = course('talamore', 'Talamore Golf Resort', {
+    'tal-blue': { name: 'Blue', rating: 71.0, slope: 132 },
+    'tal-white': { name: 'White', rating: 69.2, slope: 125 },
+  });
 
-  const mk = (id, name, index, squadId) => [id, { name, index, squadId, defaultTeeId: teeId }];
+  const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '' }];
   const red = [['p1', 8], ['p2', 12], ['p3', 5], ['p4', 16], ['p5', 10], ['p6', 3]];
   const blue = [['p7', 9], ['p8', 14], ['p9', 7], ['p10', 20], ['p11', 11], ['p12', 6]];
   const players = Object.fromEntries(
@@ -48,15 +55,15 @@ export function sampleTournament() {
     courses: { legacy, midsouth, talamore },
     rounds: {
       r1: {
-        id: 'r1', name: 'Round 1 — Legacy', courseId: 'legacy', format: 'singles',
+        id: 'r1', name: 'Round 1 — Legacy', courseId: 'legacy', format: 'singles', defaultTeeId: 'legacy-blue',
         date: '', status: 'auto', pairings: singles, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r2: {
-        id: 'r2', name: 'Round 2 — Mid South', courseId: 'midsouth', format: 'fourball',
+        id: 'r2', name: 'Round 2 — Mid South', courseId: 'midsouth', format: 'fourball', defaultTeeId: 'mid-blue',
         date: '', status: 'auto', pairings: pairs(), scores: {}, teamScores: {}, teeOverrides: {},
       },
       r3: {
-        id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'scramble',
+        id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'scramble', defaultTeeId: 'tal-blue',
         date: '', status: 'auto', pairings: pairs(), scores: {}, teamScores: {}, teeOverrides: {},
       },
     },

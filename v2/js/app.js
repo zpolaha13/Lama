@@ -6,7 +6,7 @@
  * ========================================================================= */
 import * as Store from './store.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
@@ -29,6 +29,8 @@ function hasData() { return roundIds().length > 0 && squadIds().length > 0; }
 
 /* squad-colored dot */
 const sdot = (sid) => { const s = squad(sid); return s ? `<span class="dot" style="background:${s.color || '#888'}"></span>` : ''; };
+const cPar = (c) => (c && c.holes ? c.holes.reduce((s, h) => s + (Number(h.par) || 0), 0) : 0);
+function teeNameFor(p, r) { const c = course(r.courseId); const tid = resolveTeeId(S(), p, r); const t = c && c.tees ? c.tees[tid] : null; return t ? t.name : ''; }
 
 /* ======================================================================= */
 function render() {
@@ -387,7 +389,7 @@ function viewScore() {
       const p = player(pid);
       const ch = hc.byPlayer[pid] || 0;
       const val = getScore(r, pid, h);
-      return unitRow({ rid: r.id, target: `player:${pid}`, name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch, val, hole, holes: c.holes.length });
+      return unitRow({ rid: r.id, target: `player:${pid}`, name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch, val, hole, holes: c.holes.length, tee: p ? teeNameFor(p, r) : '' });
     }).join('');
   }
 
@@ -405,7 +407,7 @@ function viewScore() {
     </div>`;
 }
 
-function unitRow({ rid, target, name, sdotId, ch, val, hole, holes }) {
+function unitRow({ rid, target, name, sdotId, ch, val, hole, holes, tee }) {
   const strokes = Eng.strokesOnHole(ch, hole.si, holes);
   const dots = strokes > 0 ? `<span class="dots">${'•'.repeat(strokes)}</span>` : '';
   const net = val != null ? (Number(val) - strokes) : null;
@@ -414,7 +416,7 @@ function unitRow({ rid, target, name, sdotId, ch, val, hole, holes }) {
   return `<div class="player-score">
     <div class="top">
       <div class="who">${sdot(sdotId)} ${esc(name)} ${dots}</div>
-      <div class="net num">CH ${ch}${net != null ? ` · net ${net}` : ''}</div>
+      <div class="net num">${tee ? esc(tee) + ' · ' : ''}CH ${ch}${net != null ? ` · net ${net}` : ''}</div>
     </div>
     <div class="stepper">
       <button class="minus" data-action="step" data-rid="${rid}" data-target="${target}" data-h="${hole._i ?? ''}" data-dir="-1">−</button>
@@ -490,6 +492,65 @@ function pairEditor(r) {
     ${avail.length ? `<div class="muted" style="font-size:12px;margin-top:6px">${avail.length} player${avail.length === 1 ? '' : 's'} not yet in a matchup.</div>` : ''}</div>`;
 }
 
+/* tee picker options for a course */
+function teeOptions(courseId, selected) {
+  const c = course(courseId);
+  if (!c || !c.tees || !Object.keys(c.tees).length) return '<option value="">—</option>';
+  return Object.entries(c.tees).map(([tid, t]) => `<option value="${tid}" ${tid === selected ? 'selected' : ''}>${esc(t.name)} (${t.slope || '?'}/${t.rating || '?'})</option>`).join('');
+}
+
+/* per-player tee overrides for a round (collapsible) */
+function teeOverrideEditor(r) {
+  const c = course(r.courseId);
+  if (!c) return '';
+  const ids = [];
+  (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => { if (!ids.includes(id)) ids.push(id); }));
+  if (!ids.length) return '<div class="muted" style="font-size:12px">Add matchups to set per-player tees.</div>';
+  return ids.filter((id) => player(id)).map((id) => {
+    const ov = (r.teeOverrides || {})[id] || '';
+    return `<div class="list-row" style="gap:8px"><span style="flex:1">${sdot(player(id).squadId)} ${esc(player(id).name)}</span>
+      <select data-action="round-tee-override" data-rid="${r.id}" data-pid="${id}" style="flex:1.2">
+        <option value="">Default (round tee)</option>
+        ${Object.entries(c.tees || {}).map(([tid, t]) => `<option value="${tid}" ${ov === tid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+      </select></div>`;
+  }).join('');
+}
+
+/* full course editor: name, tees (rating/slope), holes (par + stroke index) */
+function courseEditor() {
+  const st = S();
+  let html = '<div class="card"><h2>Courses</h2>';
+  Object.entries(st.courses).forEach(([cid, c]) => {
+    const tees = Object.entries(c.tees || {});
+    const teeRows = tees.map(([tid, t]) => `<div class="list-row" style="gap:6px">
+      <input style="flex:1" data-action="tee-name" data-cid="${cid}" data-id="${tid}" value="${esc(t.name || '')}">
+      <input type="number" step="0.1" style="width:78px" placeholder="rating" data-action="tee-rating" data-cid="${cid}" data-id="${tid}" value="${t.rating == null ? '' : t.rating}">
+      <input type="number" style="width:68px" placeholder="slope" data-action="tee-slope" data-cid="${cid}" data-id="${tid}" value="${t.slope == null ? '' : t.slope}">
+      ${tees.length > 1 ? `<button class="btn danger small" data-action="del-tee" data-cid="${cid}" data-id="${tid}">×</button>` : ''}
+    </div>`).join('');
+    const holes = c.holes || [];
+    const nums = holes.map((_, i) => `<th class="c">${i + 1}</th>`).join('');
+    const pars = holes.map((h, i) => `<td><input class="hcell" type="number" inputmode="numeric" data-action="hole-par" data-cid="${cid}" data-h="${i}" value="${h.par}"></td>`).join('');
+    const sis = holes.map((h, i) => `<td><input class="hcell" type="number" inputmode="numeric" data-action="hole-si" data-cid="${cid}" data-h="${i}" value="${h.si}"></td>`).join('');
+    html += `<div style="border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px;margin-bottom:12px">
+      <div class="list-row" style="gap:8px"><input style="flex:1" data-action="course-name" data-id="${cid}" value="${esc(c.name)}"><button class="btn danger small" data-action="del-course" data-id="${cid}">Delete</button></div>
+      <label style="margin-top:10px">Tees — name · rating · slope</label>
+      ${teeRows}
+      <div class="btn-row"><button class="btn secondary small" data-action="add-tee" data-cid="${cid}">+ Add tee</button></div>
+      <label style="margin-top:12px">Holes — par &amp; stroke index <span class="muted" style="font-weight:400">(par ${cPar(c)})</span></label>
+      <div style="overflow-x:auto"><table style="min-width:600px"><thead><tr><th>Hole</th>${nums}<th class="c">Tot</th></tr></thead>
+        <tbody>
+          <tr><td class="muted">Par</td>${pars}<td class="c num">${cPar(c)}</td></tr>
+          <tr><td class="muted">SI</td>${sis}<td></td></tr>
+        </tbody></table></div>
+      <div class="btn-row" style="margin-top:6px"><button class="btn secondary small" data-action="holes-9" data-cid="${cid}">9 holes</button><button class="btn secondary small" data-action="holes-18" data-cid="${cid}">18 holes</button></div>
+    </div>`;
+  });
+  html += '<div class="btn-row"><button class="btn secondary small" data-action="add-course">+ Add course</button></div>';
+  html += '<div class="muted" style="font-size:12px;margin-top:6px">Stroke index 1 = hardest hole. Slope &amp; rating come from the scorecard for each tee — they drive every player\'s strokes.</div></div>';
+  return html;
+}
+
 /* ---------------- SETUP (commissioner, lite) ---------------- */
 function viewSetup() {
   const st = S();
@@ -527,6 +588,9 @@ function viewSetup() {
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
 
+  // courses (full editor)
+  html += courseEditor();
+
   // rounds + manual matchup editor
   html += `<div class="card"><h2>Rounds &amp; matchups</h2>${roundIds().map((id, i) => { const r = round(id); return `<div style="border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px;margin-bottom:12px">
       <div class="field"><input data-action="round-name" data-id="${id}" value="${esc(r.name)}"></div>
@@ -534,6 +598,8 @@ function viewSetup() {
         <div class="field"><label>Format</label><select data-action="round-format" data-id="${id}">${Object.keys(FORMAT_INFO).map((f) => `<option value="${f}" ${r.format === f ? 'selected' : ''}>${FORMAT_INFO[f].label}</option>`).join('')}</select></div>
         <div class="field"><label>Course</label><select data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
+      <div class="field"><label>Tee (everyone plays this unless overridden)</label><select data-action="round-tee" data-id="${id}">${teeOptions(r.courseId, r.defaultTeeId)}</select></div>
+      <details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
       <div class="grid3">
         <div class="field"><label>Points / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
         <div class="field"><label>Handicap %</label><input type="number" step="5" min="0" max="100" data-action="round-hcpallow" data-id="${id}" value="${ruleHandicap(r).allowance}"></div>
@@ -614,8 +680,14 @@ app.addEventListener('click', (e) => {
     mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
     'add-squad': () => Store.update((s) => { const id = Store.uid('sq'); const cols = ['#1B7A3D', '#D0021B', '#1B6FB3', '#F5A623', '#7c3aed', '#0891b2']; s.squads[id] = { name: 'Team ' + (Object.keys(s.squads).length + 1), color: cols[Object.keys(s.squads).length % cols.length] }; }),
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
-    'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: firstTee(s) }; }),
+    'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '' }; }),
     'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
+    'add-course': () => Store.update((s) => { const id = Store.uid('c'); s.courses[id] = { id, name: 'New Course', tees: { [Store.uid('tee')]: { name: 'White', rating: 71.0, slope: 113 } }, holes: blankHoles(18) }; }),
+    'del-course': () => Store.update((s) => { const del = t.dataset.id; delete s.courses[del]; Object.values(s.rounds).forEach((r) => { if (r.courseId === del) { r.courseId = ''; r.defaultTeeId = ''; } }); }),
+    'add-tee': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c) { c.tees = c.tees || {}; c.tees[Store.uid('tee')] = { name: 'Tee', rating: 71.0, slope: 113 }; } }),
+    'del-tee': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c && Object.keys(c.tees).length > 1) delete c.tees[t.dataset.id]; }),
+    'holes-9': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c) c.holes = setHoleCount(c.holes, 9); }),
+    'holes-18': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c) c.holes = setHoleCount(c.holes, 18); }),
   };
   if (handlers[a]) { e.preventDefault(); handlers[a](); }
 });
@@ -640,6 +712,14 @@ app.addEventListener('change', (e) => {
     'round-ppm': () => ruleSet(t.dataset.id, { pointsPerMatch: v === '' ? 1 : Number(v) }),
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
     'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
+    'round-tee': () => Store.update((s) => { s.rounds[t.dataset.id].defaultTeeId = v; }),
+    'round-tee-override': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.teeOverrides = r.teeOverrides || {}; if (v) r.teeOverrides[t.dataset.pid] = v; else delete r.teeOverrides[t.dataset.pid]; }),
+    'course-name': () => Store.update((s) => { s.courses[t.dataset.id].name = v; }),
+    'tee-name': () => Store.update((s) => { s.courses[t.dataset.cid].tees[t.dataset.id].name = v; }),
+    'tee-rating': () => Store.update((s) => { s.courses[t.dataset.cid].tees[t.dataset.id].rating = v === '' ? null : Number(v); }),
+    'tee-slope': () => Store.update((s) => { s.courses[t.dataset.cid].tees[t.dataset.id].slope = v === '' ? null : Number(v); }),
+    'hole-par': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c.holes[t.dataset.h]) c.holes[t.dataset.h].par = parseInt(v, 10) || 0; }),
+    'hole-si': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c.holes[t.dataset.h]) c.holes[t.dataset.h].si = parseInt(v, 10) || 0; }),
     madd: () => { if (!v) return; Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = p[k] || []; if (!p[k].includes(v)) p[k].push(v); }); },
     'skin-enabled': () => skinSet(t.dataset.rid, { enabled: v === 'on' }),
     'skin-mode': () => skinSet(t.dataset.rid, { mode: v }),
@@ -656,6 +736,14 @@ function skinSet(rid, patch) {
   });
 }
 function firstTee(s) { for (const cid in s.courses) { const tt = s.courses[cid].tees; const k = tt && Object.keys(tt)[0]; if (k) return k; } return ''; }
+function blankHoles(n) { const a = []; for (let i = 0; i < n; i++) a.push({ par: 4, si: i + 1 }); return a; }
+function setHoleCount(holes, n) {
+  const cur = holes || [];
+  if (cur.length === n) return cur.map((h) => ({ par: h.par, si: h.si }));
+  const a = [];
+  for (let i = 0; i < n; i++) { const ex = cur[i]; a.push({ par: ex ? ex.par : 4, si: ex && ex.si <= n ? ex.si : i + 1 }); }
+  return a;
+}
 function ruleSet(rid, patch) {
   Store.update((s) => {
     const r = s.rounds[rid];
