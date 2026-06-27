@@ -11,52 +11,54 @@ export function sampleTournament() {
   const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
   const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
 
-  // Tees + per-hole PAR + per-hole STROKE INDEX, all from official scorecards (user-provided):
-  // Mid South from the official Arnold Palmer card; Legacy & Talamore from BlueGolf detailed
-  // scorecards (handicap rows decoded and validated as 1-18 permutations). Default tee per
-  // round is Blue. One open item: Legacy plays holes 16/18 per BlueGolf (h16 par4 / h18 par5),
-  // which differed from a secondary image card — confirm on the physical card if it matters.
+  // All three courses from the official Talamore Golf Resort website scorecards
+  // (men's tees, par, and men's handicap row). Each HCP row validated as a clean
+  // 1-18 permutation (even front / odd back). Default tee per round is Blue.
+  // Note: the printed cards have swapped course logos and a couple of obvious
+  // par/yardage typos on Legacy holes 16/18 — par there follows the yardage
+  // (hole 18 is the long par 5). Stroke index is taken exactly as printed.
   const mkHoles = (arr) => arr.map(([par, si]) => ({ par, si }));
 
-  // Legacy Golf Links — Aberdeen, NC — par 72 (F36/B36). Tees, par & SI from BlueGolf.
+  // Legacy Golf Links — par 72 (F36/B36).
   const legacy = {
     id: 'legacy', name: 'Legacy Golf Links',
     tees: {
-      'legacy-black': { name: 'Black', rating: 73.9, slope: 133 },
-      'legacy-blue': { name: 'Blue', rating: 71.4, slope: 127 },
-      'legacy-white': { name: 'White', rating: 68.9, slope: 123 },
-      'legacy-green': { name: 'Green', rating: 68.7, slope: 120 },
+      'legacy-gold': { name: 'Gold', rating: 74.4, slope: 139 },
+      'legacy-blue': { name: 'Blue', rating: 72.2, slope: 134 },
+      'legacy-white': { name: 'White', rating: 69.6, slope: 130 },
+      'legacy-green': { name: 'Green', rating: 66.5, slope: 117 },
+      'legacy-red': { name: 'Red', rating: 63.9, slope: 113 },
     },
     holes: mkHoles([[4, 5], [5, 13], [4, 9], [4, 1], [3, 15], [5, 11], [4, 3], [4, 7], [3, 17],
       [4, 4], [3, 10], [4, 12], [5, 14], [4, 6], [4, 16], [4, 2], [3, 18], [5, 8]]),
   };
 
-  // Mid South Club — Southern Pines, NC — par 71 (F36/B35). All from the official
-  // Arnold Palmer scorecard (tees, par, and men's handicap row).
+  // Mid South Club — par 71 (F36/B35).
   const midsouth = {
     id: 'midsouth', name: 'Mid South Club',
     tees: {
-      'mid-gold': { name: 'Gold', rating: 73.8, slope: 144 },
-      'mid-blue': { name: 'Blue', rating: 71.9, slope: 134 },
-      'mid-white': { name: 'White', rating: 69.9, slope: 128 },
-      'mid-green': { name: 'Green', rating: 68.0, slope: 117 },
-      'mid-red': { name: 'Red', rating: 63.5, slope: 111 },
+      'mid-gold': { name: 'Gold', rating: 73.8, slope: 146 },
+      'mid-blue': { name: 'Blue', rating: 72.1, slope: 139 },
+      'mid-white': { name: 'White', rating: 70.0, slope: 132 },
+      'mid-green': { name: 'Green', rating: 67.8, slope: 122 },
+      'mid-red': { name: 'Red', rating: 63.9, slope: 113 },
     },
-    holes: mkHoles([[4, 12], [4, 4], [3, 18], [5, 6], [4, 14], [3, 16], [4, 8], [4, 10], [5, 2],
-      [4, 11], [3, 17], [4, 13], [4, 5], [4, 7], [5, 1], [4, 9], [3, 15], [4, 3]]),
+    holes: mkHoles([[4, 12], [4, 4], [3, 18], [5, 10], [4, 2], [3, 16], [4, 14], [4, 8], [5, 6],
+      [4, 11], [3, 17], [4, 1], [4, 9], [4, 3], [5, 13], [4, 7], [3, 15], [4, 5]]),
   };
 
-  // Talamore (Resort course) — Southern Pines, NC — par 71 (F36/B35). Tees, par & SI from BlueGolf.
+  // Talamore (Resort course) — par 71 (F36/B35).
   const talamore = {
     id: 'talamore', name: 'Talamore Golf Resort',
     tees: {
-      'tal-gold': { name: 'Gold', rating: 73.2, slope: 140 },
-      'tal-blue': { name: 'Blue', rating: 70.8, slope: 134 },
-      'tal-white': { name: 'White', rating: 68.7, slope: 126 },
-      'tal-red': { name: 'Red', rating: 64.5, slope: 109 },
+      'tal-gold': { name: 'Gold', rating: 72.4, slope: 132 },
+      'tal-blue': { name: 'Blue', rating: 70.4, slope: 129 },
+      'tal-white': { name: 'White', rating: 68.4, slope: 121 },
+      'tal-green': { name: 'Green', rating: 65.2, slope: 112 },
+      'tal-red': { name: 'Red', rating: 63.1, slope: 106 },
     },
     holes: mkHoles([[5, 4], [3, 16], [4, 6], [5, 14], [3, 18], [4, 12], [4, 2], [4, 8], [4, 10],
-      [4, 7], [5, 15], [4, 5], [3, 17], [4, 9], [3, 13], [4, 11], [4, 1], [4, 3]]),
+      [4, 7], [5, 15], [4, 5], [3, 17], [4, 9], [3, 13], [4, 1], [4, 11], [4, 3]]),
   };
 
   const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '' }];
