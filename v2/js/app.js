@@ -238,13 +238,81 @@ function viewRoundDetail() {
       <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} <b>${rr.pointsAvailable} points in play.</b></div>
       <button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
     </div>
-    ${roundBoard(rr)}`;
+    ${roundBoard(rr)}
+    ${skinsCard(r)}`;
 }
 
 /* round leaderboard (match list) */
 function roundBoard(rr) {
   const r = round(rr.roundId);
   return `<div class="card"><h2>Matches</h2>${matchList(rr)}</div>`;
+}
+
+/* ---------------- SKINS ---------------- */
+function skinsCfg(rid) {
+  const s = (S().skins || {})[rid] || {};
+  return { enabled: !!s.enabled, mode: s.mode || 'net', tie: s.tie || 'rollover', value: s.value || 0 };
+}
+function roundPlayersCH(r) {
+  const ids = [];
+  (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => { if (!ids.includes(id)) ids.push(id); }));
+  return ids.filter((id) => player(id)).map((id) => ({ id, name: player(id).name, courseHandicap: chFor(S(), player(id), r) }));
+}
+function computeRoundSkins(r) {
+  const cfg = skinsCfg(r.id);
+  const c = course(r.courseId);
+  const players = roundPlayersCH(r);
+  const res = Eng.computeSkins(players, c.holes, (pid, h) => getScore(r, pid, h), { mode: cfg.mode, tie: cfg.tie });
+  const pay = Eng.skinsPayouts(cfg.value, players, res.skinsByPlayer, res.totalSkins);
+  return { cfg, players, res, pay };
+}
+
+function skinsCard(r) {
+  if (r.format === 'scramble') {
+    return `<div class="card"><h2>Skins</h2><div class="muted">Skins don't apply to a scramble (one team ball per hole).</div></div>`;
+  }
+  const cfg = skinsCfg(r.id);
+  const sel = (cur, val, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
+  let cfgRow = `<div class="grid2">
+    <div class="field"><label>Skins</label><select data-action="skin-enabled" data-rid="${r.id}">${sel(cfg.enabled ? 'on' : 'off', 'on', 'On')}${sel(cfg.enabled ? 'on' : 'off', 'off', 'Off')}</select></div>
+    <div class="field"><label>Buy-in / player ($)</label><input type="number" inputmode="numeric" data-action="skin-buyin" data-rid="${r.id}" value="${cfg.value}"></div>
+    <div class="field"><label>Scoring</label><select data-action="skin-mode" data-rid="${r.id}">${sel(cfg.mode, 'net', 'Net')}${sel(cfg.mode, 'gross', 'Gross')}</select></div>
+    <div class="field"><label>On a tie…</label><select data-action="skin-tie" data-rid="${r.id}">${sel(cfg.tie, 'rollover', 'Roll over (carry)')}${sel(cfg.tie, 'split', 'Split the skin')}</select></div>
+  </div>`;
+
+  let body = '';
+  if (cfg.enabled) {
+    const { res, pay, players } = computeRoundSkins(r);
+    const winners = players.filter((p) => res.skinsByPlayer[p.id]).sort((a, b) => res.skinsByPlayer[b.id] - res.skinsByPlayer[a.id]);
+    const fmtSkins = (n) => (Math.round(n * 100) / 100).toString();
+    const won = winners.length
+      ? `<table><thead><tr><th>Player</th><th class="c">Skins</th><th class="r">$</th></tr></thead><tbody>
+          ${winners.map((p) => `<tr><td>${esc(p.name)}</td><td class="c num">${fmtSkins(res.skinsByPlayer[p.id])}</td><td class="r num win">${Eng.money(pay.payouts[p.id])}</td></tr>`).join('')}
+         </tbody></table>`
+      : `<div class="muted">No skins won yet${res.leftoverCarry ? ` · ${res.leftoverCarry} carrying` : ''}.</div>`;
+    const holeRows = res.results.filter((x) => x.played).map((x) => {
+      const w = x.winnerIds.length ? x.winnerIds.map((id) => esc(player(id) ? player(id).name : '?')).join(' + ') : (x.carried ? 'carried' : x.split ? 'split' : '—');
+      return `<tr><td class="c">${x.holeIndex + 1}</td><td>${w}</td><td class="c num">${x.value || ''}</td></tr>`;
+    }).join('');
+    body = `<div class="tip" style="margin-top:8px">Pot ${Eng.money(pay.pot)} · ${cfg.mode} · ${cfg.tie === 'split' ? 'split ties' : 'rollover'} · ${fmtSkins(res.totalSkins)} skins @ ${Eng.money(pay.perSkin)}${res.leftoverCarry ? ` · ${res.leftoverCarry} carrying` : ''}</div>
+      <h3>Winnings</h3>${won}
+      <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Hole-by-hole</summary>
+        <table style="margin-top:6px"><thead><tr><th class="c">Hole</th><th>Winner</th><th class="c">Skins</th></tr></thead><tbody>${holeRows}</tbody></table>
+      </details>`;
+  }
+  return `<div class="card"><h2>Skins &amp; money</h2>${cfgRow}${body}</div>`;
+}
+
+/* trip-wide skins money per player (across all non-scramble rounds) */
+function tripMoney() {
+  const money = {};
+  roundIds().forEach((id) => {
+    const r = round(id);
+    if (r.format === 'scramble' || !skinsCfg(id).enabled) return;
+    const { pay } = computeRoundSkins(r);
+    Object.keys(pay.payouts).forEach((pid) => { money[pid] = (money[pid] || 0) + pay.payouts[pid]; });
+  });
+  return money;
 }
 
 function matchList(rr) {
@@ -371,7 +439,42 @@ function viewMyCard() {
     </div>`;
   }).join('');
 
-  return picker + `<div class="card"><h2>${sdot(me.squadId)} ${esc(me.name)} <span class="muted" style="font-weight:400;font-size:14px">· ${squad(me.squadId) ? esc(squad(me.squadId).name) : ''} · index ${me.index}</span></h2>${rows || '<div class="muted">No matchups yet.</div>'}</div>`;
+  const money = tripMoney();
+  const myMoney = money[me.id] || 0;
+  const allVals = Object.values(money);
+  const moneyCard = allVals.some((v) => v)
+    ? `<div class="card"><h2>Skins money</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="muted">Your skins winnings so far</div>
+          <div class="num" style="font-size:24px;font-weight:800;color:var(--gain)">${Eng.money(myMoney)}</div>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px">Across all rounds with skins on. Buy-ins &amp; tie rules are set per round on each round's page.</div>
+      </div>`
+    : '';
+
+  return picker + `<div class="card"><h2>${sdot(me.squadId)} ${esc(me.name)} <span class="muted" style="font-weight:400;font-size:14px">· ${squad(me.squadId) ? esc(squad(me.squadId).name) : ''} · index ${me.index}</span></h2>${rows || '<div class="muted">No matchups yet.</div>'}</div>${moneyCard}`;
+}
+
+/* manual matchup editor for one round */
+function pairEditor(r) {
+  const used = new Set();
+  (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => used.add(id)));
+  const avail = Object.keys(S().players).filter((id) => !used.has(id));
+  const chips = (mid, side, ids) => (ids || []).map((pid) => {
+    const p = player(pid);
+    return `<span class="chip">${sdot(p ? p.squadId : null)} ${esc(p ? p.name : '?')} <span style="cursor:pointer;color:var(--loss);font-weight:800" data-action="mremove" data-rid="${r.id}" data-mid="${mid}" data-side="${side}" data-pid="${pid}">×</span></span>`;
+  }).join(' ');
+  const addSel = (mid, side) => avail.length
+    ? `<select style="margin-top:4px" data-action="madd" data-rid="${r.id}" data-mid="${mid}" data-side="${side}"><option value="">+ add player…</option>${avail.map((id) => `<option value="${id}">${esc(player(id).name)} (${squad(player(id).squadId) ? squad(player(id).squadId).name.replace('Team ', '') : '?'})</option>`).join('')}</select>`
+    : '';
+  const matches = (r.pairings || []).map((p, i) => `<div class="list-row" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>Match ${i + 1}</b><button class="btn danger small" data-action="del-match" data-rid="${r.id}" data-mid="${p.id}">Remove</button></div>
+      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE A</div><div>${chips(p.id, 'A', p.teamA) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'A')}</div>
+      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE B</div><div>${chips(p.id, 'B', p.teamB) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'B')}</div>
+    </div>`).join('');
+  return `<div style="margin-top:6px">${matches || '<div class="muted" style="font-size:13px;margin-bottom:8px">No matchups yet.</div>'}
+    <div class="btn-row"><button class="btn secondary small" data-action="add-match" data-rid="${r.id}">+ Add matchup</button><button class="btn secondary small" data-action="auto-pair" data-id="${r.id}">Auto-pair from teams</button></div>
+    ${avail.length ? `<div class="muted" style="font-size:12px;margin-top:6px">${avail.length} player${avail.length === 1 ? '' : 's'} not yet in a matchup.</div>` : ''}</div>`;
 }
 
 /* ---------------- SETUP (commissioner, lite) ---------------- */
@@ -385,27 +488,40 @@ function viewSetup() {
     </div>
   </div>`;
 
-  // squads
-  html += `<div class="card"><h2>Teams (Squads)</h2>${squadIds().map((sid) => { const s = squad(sid); return `<div class="list-row"><input style="flex:1" data-action="squad-name" data-id="${sid}" value="${esc(s.name)}"><input type="color" style="width:54px;padding:2px" data-action="squad-color" data-id="${sid}" value="${s.color || '#1B7A3D'}"></div>`; }).join('')}</div>`;
+  // squads (add / remove — any number of teams)
+  html += `<div class="card"><h2>Teams</h2>
+    ${squadIds().map((sid) => { const s = squad(sid); const n = Object.values(st.players).filter((p) => p.squadId === sid).length; return `<div class="list-row">
+      <span class="dot" style="background:${s.color || '#1B7A3D'}"></span>
+      <input style="flex:1" data-action="squad-name" data-id="${sid}" value="${esc(s.name)}">
+      <span class="muted" style="font-size:12px;white-space:nowrap">${n} player${n === 1 ? '' : 's'}</span>
+      <input type="color" style="width:46px;padding:2px" data-action="squad-color" data-id="${sid}" value="${s.color || '#1B7A3D'}">
+      ${squadIds().length > 1 ? `<button class="btn danger small" data-action="del-squad" data-id="${sid}">×</button>` : ''}
+    </div>`; }).join('')}
+    <div class="btn-row" style="margin-top:6px"><button class="btn secondary small" data-action="add-squad">+ Add team</button></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Teams can be any size — assign players below. 6v6, 4v4, anything.</div>
+  </div>`;
 
-  // players
-  html += `<div class="card"><h2>Players</h2>
-    <table><thead><tr><th>Name</th><th style="width:64px">Index</th><th>Team</th></tr></thead><tbody>
+  // players (add / remove)
+  html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
+    <table><thead><tr><th>Name</th><th style="width:58px">Index</th><th>Team</th><th></th></tr></thead><tbody>
     ${Object.entries(st.players).map(([id, p]) => `<tr>
       <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
       <td><input type="number" step="0.1" data-action="player-index" data-id="${id}" value="${p.index}"></td>
       <td><select data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
+      <td><button class="btn danger small" data-action="del-player" data-id="${id}">×</button></td>
     </tr>`).join('')}
     </tbody></table>
-    <div class="muted" style="font-size:12px;margin-top:8px">Course slope/rating &amp; hole stroke-index are placeholders in the sample — full course editor coming in the next build pass.</div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
 
-  // rounds (format + course + auto-pair)
-  html += `<div class="card"><h2>Rounds</h2>${roundIds().map((id, i) => { const r = round(id); return `<div class="list-row" style="flex-wrap:wrap;gap:8px">
-      <input style="flex:1 1 100%" data-action="round-name" data-id="${id}" value="${esc(r.name)}">
-      <select style="flex:1" data-action="round-format" data-id="${id}">${Object.keys(FORMAT_INFO).map((f) => `<option value="${f}" ${r.format === f ? 'selected' : ''}>${FORMAT_INFO[f].label}</option>`).join('')}</select>
-      <select style="flex:1" data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
-      <button class="btn secondary small" data-action="auto-pair" data-id="${id}">Auto-pair teams</button>
+  // rounds + manual matchup editor
+  html += `<div class="card"><h2>Rounds &amp; matchups</h2>${roundIds().map((id, i) => { const r = round(id); return `<div style="border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px;margin-bottom:12px">
+      <div class="field"><input data-action="round-name" data-id="${id}" value="${esc(r.name)}"></div>
+      <div class="grid2">
+        <div class="field"><label>Format</label><select data-action="round-format" data-id="${id}">${Object.keys(FORMAT_INFO).map((f) => `<option value="${f}" ${r.format === f ? 'selected' : ''}>${FORMAT_INFO[f].label}</option>`).join('')}</select></div>
+        <div class="field"><label>Course</label><select data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      </div>
+      <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
 
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
@@ -472,6 +588,13 @@ app.addEventListener('click', (e) => {
     export: () => doExport(),
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
     'auto-pair': () => autoPair(t.dataset.id),
+    'add-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = r.pairings || []; r.pairings.push({ id: Store.uid('m'), teamA: [], teamB: [] }); }),
+    'del-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); }),
+    mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
+    'add-squad': () => Store.update((s) => { const id = Store.uid('sq'); const cols = ['#1B7A3D', '#D0021B', '#1B6FB3', '#F5A623', '#7c3aed', '#0891b2']; s.squads[id] = { name: 'Team ' + (Object.keys(s.squads).length + 1), color: cols[Object.keys(s.squads).length % cols.length] }; }),
+    'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
+    'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: firstTee(s) }; }),
+    'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
   };
   if (handlers[a]) { e.preventDefault(); handlers[a](); }
 });
@@ -493,9 +616,22 @@ app.addEventListener('change', (e) => {
     'round-name': () => Store.update((s) => { s.rounds[t.dataset.id].name = v; }),
     'round-format': () => Store.update((s) => { s.rounds[t.dataset.id].format = v; }),
     'round-course': () => Store.update((s) => { s.rounds[t.dataset.id].courseId = v; }),
+    madd: () => { if (!v) return; Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = p[k] || []; if (!p[k].includes(v)) p[k].push(v); }); },
+    'skin-enabled': () => skinSet(t.dataset.rid, { enabled: v === 'on' }),
+    'skin-mode': () => skinSet(t.dataset.rid, { mode: v }),
+    'skin-tie': () => skinSet(t.dataset.rid, { tie: v }),
+    'skin-buyin': () => skinSet(t.dataset.rid, { value: Number(v) || 0 }),
   };
   if (set[a]) set[a]();
 });
+
+function skinSet(rid, patch) {
+  Store.update((s) => {
+    s.skins = s.skins || {};
+    s.skins[rid] = Object.assign({ enabled: false, mode: 'net', tie: 'rollover', value: 0 }, s.skins[rid], patch);
+  });
+}
+function firstTee(s) { for (const cid in s.courses) { const tt = s.courses[cid].tees; const k = tt && Object.keys(tt)[0]; if (k) return k; } return ''; }
 
 /* score mutations */
 function stepScore(rid, target, dir) {

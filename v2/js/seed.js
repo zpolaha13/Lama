@@ -20,23 +20,18 @@ export function sampleTournament() {
   const talamore = course('talamore', 'Talamore Golf Resort', 71.0, 132);
 
   const mk = (id, name, index, squadId) => [id, { name, index, squadId, defaultTeeId: teeId }];
-  const players = Object.fromEntries([
-    mk('p1', 'Player 1', 8, 'red'), mk('p2', 'Player 2', 12, 'red'),
-    mk('p3', 'Player 3', 5, 'red'), mk('p4', 'Player 4', 16, 'red'),
-    mk('p5', 'Player 5', 9, 'blue'), mk('p6', 'Player 6', 14, 'blue'),
-    mk('p7', 'Player 7', 7, 'blue'), mk('p8', 'Player 8', 20, 'blue'),
-  ]);
+  const red = [['p1', 8], ['p2', 12], ['p3', 5], ['p4', 16], ['p5', 10], ['p6', 3]];
+  const blue = [['p7', 9], ['p8', 14], ['p9', 7], ['p10', 20], ['p11', 11], ['p12', 6]];
+  const players = Object.fromEntries(
+    red.map(([id, ix], i) => mk(id, 'Player ' + (i + 1), ix, 'red'))
+      .concat(blue.map(([id, ix], i) => mk(id, 'Player ' + (i + 7), ix, 'blue')))
+  );
 
-  const singles = [
-    { id: uid('m'), teamA: ['p1'], teamB: ['p5'] },
-    { id: uid('m'), teamA: ['p2'], teamB: ['p6'] },
-    { id: uid('m'), teamA: ['p3'], teamB: ['p7'] },
-    { id: uid('m'), teamA: ['p4'], teamB: ['p8'] },
-  ];
-  const pairs = () => [
-    { id: uid('m'), teamA: ['p1', 'p2'], teamB: ['p5', 'p6'] },
-    { id: uid('m'), teamA: ['p3', 'p4'], teamB: ['p7', 'p8'] },
-  ];
+  // R1 singles: 6 matches (1v1). R2/R3: 3 matches (2v2 pairs).
+  const singles = red.map(([rid], i) => ({ id: uid('m'), teamA: [rid], teamB: [blue[i][0]] }));
+  const pairs = () => [0, 1, 2].map((k) => ({
+    id: uid('m'), teamA: [red[k * 2][0], red[k * 2 + 1][0]], teamB: [blue[k * 2][0], blue[k * 2 + 1][0]],
+  }));
 
   return {
     schemaVersion: 2,
@@ -66,8 +61,8 @@ export function sampleTournament() {
       },
     },
     skins: {
-      r1: { enabled: true, value: 5, carryover: true },
-      r2: { enabled: true, value: 5, carryover: true },
+      r1: { enabled: true, mode: 'net', tie: 'rollover', value: 10 },
+      r2: { enabled: true, mode: 'net', tie: 'split', value: 10 },
     },
     payouts: { potPerPlayer: 20, places: [0.6, 0.3, 0.1] },
     ui: { meId: null },

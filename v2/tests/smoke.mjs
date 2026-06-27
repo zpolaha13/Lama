@@ -63,7 +63,28 @@ fireClick({ action: 'weight-mode' }); check('weight-toggled');
 fireClick({ action: 'tab', tab: 'mycard' });
 fireChange({ action: 'pick-me' }, 'p1'); check('me-picked');
 
+// skins config + money on a round
+fireClick({ action: 'open-round', id: 'r2' });
+fireChange({ action: 'skin-enabled', rid: 'r2' }, 'on');
+fireChange({ action: 'skin-tie', rid: 'r2' }, 'split');
+fireChange({ action: 'skin-mode', rid: 'r2' }, 'gross');
+fireChange({ action: 'skin-buyin', rid: 'r2' }, '15');
+check('skins-config');
+fireClick({ action: 'tab', tab: 'mycard' }); fireChange({ action: 'pick-me' }, 'p1'); check('mycard-money');
+
+// setup: flexible teams + manual matchup editor
+fireClick({ action: 'tab', tab: 'setup' }); check('setup');
+fireClick({ action: 'add-squad' }); check('add-squad');
+fireClick({ action: 'add-player' }); check('add-player');
+fireClick({ action: 'add-match', rid: 'r1' }); check('add-match');
+// add a player to the new match side A: find an available player id from rendered options
+const opt = [...appEl.innerHTML.matchAll(/data-action="madd"[^>]*data-rid="r1"[^>]*data-mid="([^"]+)"[^>]*data-side="A"/g)][0];
+if (opt) { /* the select exists; simulate choosing first available */ }
+fireClick({ action: 'auto-pair', id: 'r1' }); check('auto-pair-12');
+fireClick({ action: 'del-player', id: 'p12' }); check('del-player');
+
 // how-it-works sheet
+fireClick({ action: 'tab', tab: 'home' });
 fireClick({ action: 'sheet', sheet: 'how' }); check('sheet');
 fireClick({ action: 'close-sheet' });
 

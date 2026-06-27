@@ -100,5 +100,25 @@ eq(r1n.contribution.red, 3.5, 'normalized contribution red 3.5');
 // chFor sanity
 eq(chFor(st, st.players.p1, st.rounds.r1), 0, 'chFor scratch on par72/113');
 
+/* ---------------- skins: rollover vs split ---------------- */
+const sh = [{ par: 4, si: 1 }, { par: 4, si: 2 }, { par: 4, si: 3 }];
+const pl = [{ id: 'a', courseHandicap: 0 }, { id: 'b', courseHandicap: 0 }, { id: 'c', courseHandicap: 0 }];
+const sc2 = { a: { 0: 3, 1: 4, 2: 3 }, b: { 0: 4, 1: 4, 2: 5 }, c: { 0: 5, 1: 5, 2: 5 } };
+const gs2 = (pid, h) => (sc2[pid] && sc2[pid][h] != null ? sc2[pid][h] : null);
+// rollover: h0 a wins(1); h1 a&b tie(4) carry; h2 a wins 1+1=2 -> a=3
+const ro = G.computeSkins(pl, sh, gs2, { mode: 'gross', tie: 'rollover' });
+eq(ro.skinsByPlayer.a, 3, 'rollover a=3');
+eq(ro.totalSkins, 3, 'rollover total 3');
+// split: h0 a=1; h1 a&b 0.5 each; h2 a=1 -> a=2.5 b=0.5
+const sp = G.computeSkins(pl, sh, gs2, { mode: 'gross', tie: 'split' });
+eq(sp.skinsByPlayer.a, 2.5, 'split a=2.5');
+eq(sp.skinsByPlayer.b, 0.5, 'split b=0.5');
+eq(sp.totalSkins, 3, 'split total 3');
+// payouts: buy-in 10 x 3 players = $30 pot; split perSkin = 30/3 = 10
+const pay = G.skinsPayouts(10, pl, sp.skinsByPlayer, sp.totalSkins);
+eq(pay.pot, 30, 'skins pot 30');
+eq(pay.payouts.a, 25, 'split a $25');
+eq(pay.payouts.b, 5, 'split b $5');
+
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

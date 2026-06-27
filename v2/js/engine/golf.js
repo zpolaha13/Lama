@@ -145,10 +145,15 @@ export function matchTag(m, labelA, labelB) {
   return (m.status > 0 ? labelA : labelB) + ' ' + Math.abs(m.status) + ' UP thru ' + m.played;
 }
 
-/* Skins. players: [{id, name, courseHandicap}]. */
+/* Skins. players: [{id, name, courseHandicap}].
+ * opts.mode: 'net' | 'gross' (how each hole is scored)
+ * opts.tie:  'rollover' (tie carries the skin to the next hole)
+ *          | 'split'    (tie splits that hole's skin among the tied players)
+ * Returns skinsByPlayer (may be fractional in split mode) and per-hole results. */
 export function computeSkins(players, holes, getScore, opts) {
   const mode = (opts && opts.mode) || 'net';
-  const carryover = opts && opts.carryover;
+  // back-compat: opts.carryover === false meant "no carry"; default to rollover
+  const tie = (opts && opts.tie) || (opts && opts.carryover === false ? 'split' : 'rollover');
   const results = [];
   const skinsByPlayer = {};
   let carry = 0;
@@ -161,23 +166,28 @@ export function computeSkins(players, holes, getScore, opts) {
         : Number(g) - strokesOnHole(p.courseHandicap, hole.si, holes.length);
       vals.push({ id: p.id, score });
     });
-    if (vals.length === 0) { results.push({ holeIndex: i, winnerId: null, value: 0, played: false }); return; }
+    if (vals.length === 0) { results.push({ holeIndex: i, winnerIds: [], value: 0, played: false }); return; }
     const best = Math.min(...vals.map((v) => v.score));
     const winners = vals.filter((v) => v.score === best);
     const pot = 1 + carry;
     if (winners.length === 1) {
       const wid = winners[0].id;
       skinsByPlayer[wid] = (skinsByPlayer[wid] || 0) + pot;
-      results.push({ holeIndex: i, winnerId: wid, value: pot, best, tie: false, played: true });
+      results.push({ holeIndex: i, winnerIds: [wid], value: pot, best, tie: false, played: true });
       carry = 0;
-    } else {
-      results.push({ holeIndex: i, winnerId: null, value: 0, best, tie: true, carried: carryover, played: true });
-      carry = carryover ? pot : 0;
+    } else if (tie === 'split') {
+      const share = pot / winners.length;
+      winners.forEach((w) => { skinsByPlayer[w.id] = (skinsByPlayer[w.id] || 0) + share; });
+      results.push({ holeIndex: i, winnerIds: winners.map((w) => w.id), value: pot, best, tie: true, split: true, played: true });
+      carry = 0;
+    } else { // rollover
+      results.push({ holeIndex: i, winnerIds: [], value: 0, best, tie: true, carried: true, played: true });
+      carry = pot;
     }
   });
   let totalSkins = 0;
   Object.values(skinsByPlayer).forEach((n) => (totalSkins += n));
-  return { results, skinsByPlayer, totalSkins, leftoverCarry: carry };
+  return { results, skinsByPlayer, totalSkins, leftoverCarry: carry, mode, tie };
 }
 
 export function skinsPayouts(buyIn, players, skinsByPlayer, totalSkins) {
