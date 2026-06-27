@@ -62,18 +62,32 @@ export function sampleTournament() {
   };
 
   const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '' }];
-  const red = [['p1', 8], ['p2', 12], ['p3', 5], ['p4', 16], ['p5', 10], ['p6', 3]];
-  const blue = [['p7', 9], ['p8', 14], ['p9', 7], ['p10', 20], ['p11', 11], ['p12', 6]];
-  const players = Object.fromEntries(
-    red.map(([id, ix], i) => mk(id, 'Player ' + (i + 1), ix, 'red'))
-      .concat(blue.map(([id, ix], i) => mk(id, 'Player ' + (i + 7), ix, 'blue')))
-  );
+  // Real roster (handicap index in parens). Team Red vs Team Blue, 6 v 6.
+  const players = Object.fromEntries([
+    mk('parker', 'Parker', 5, 'red'), mk('bernie', 'Bernie', 7, 'red'), mk('jordan', 'Jordan', 11, 'red'),
+    mk('polo', 'Polo', 18, 'red'), mk('danny', 'Danny', 18, 'red'), mk('lilbernie', 'Lil Bernie', 20, 'red'),
+    mk('zach', 'Zach', 5, 'blue'), mk('andrew', 'Andrew', 6, 'blue'), mk('ty', 'Ty', 11, 'blue'),
+    mk('townsley', 'Townsley', 12, 'blue'), mk('mitchy', 'Mitchy', 20, 'blue'), mk('blake', 'Blake', 22, 'blue'),
+  ]);
 
-  // R1 singles: 6 matches (1v1). R2/R3: 3 matches (2v2 pairs).
-  const singles = red.map(([rid], i) => ({ id: uid('m'), teamA: [rid], teamB: [blue[i][0]] }));
-  const pairs = () => [0, 1, 2].map((k) => ({
-    id: uid('m'), teamA: [red[k * 2][0], red[k * 2 + 1][0]], teamB: [blue[k * 2][0], blue[k * 2 + 1][0]],
-  }));
+  const m = (a, b) => ({ id: uid('m'), teamA: a, teamB: b });
+  // R1 — Legacy — 1v1 singles
+  const r1pairings = [
+    m(['parker'], ['zach']), m(['jordan'], ['andrew']), m(['bernie'], ['ty']),
+    m(['polo'], ['townsley']), m(['danny'], ['mitchy']), m(['lilbernie'], ['blake']),
+  ];
+  // R2 — Mid South — 2v2 best ball
+  const r2pairings = [
+    m(['parker', 'polo'], ['andrew', 'blake']),
+    m(['bernie', 'danny'], ['zach', 'townsley']),
+    m(['jordan', 'lilbernie'], ['ty', 'mitchy']),
+  ];
+  // R3 — Talamore — 2v2 Texas scramble
+  const r3pairings = [
+    m(['parker', 'lilbernie'], ['zach', 'blake']),
+    m(['jordan', 'danny'], ['andrew', 'mitchy']),
+    m(['polo', 'bernie'], ['ty', 'townsley']),
+  ];
 
   return {
     schemaVersion: 2,
@@ -91,15 +105,15 @@ export function sampleTournament() {
     rounds: {
       r1: {
         id: 'r1', name: 'Round 1 — Legacy', courseId: 'legacy', format: 'singles', defaultTeeId: 'legacy-blue',
-        date: '', status: 'auto', pairings: singles, scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', pairings: r1pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r2: {
         id: 'r2', name: 'Round 2 — Mid South', courseId: 'midsouth', format: 'fourball', defaultTeeId: 'mid-blue',
-        date: '', status: 'auto', pairings: pairs(), scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', pairings: r2pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r3: {
         id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'scramble', defaultTeeId: 'tal-blue',
-        date: '', status: 'auto', pairings: pairs(), scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', pairings: r3pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
     },
     skins: {
