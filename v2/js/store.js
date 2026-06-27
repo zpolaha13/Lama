@@ -14,7 +14,10 @@ let state = emptyState();
 let listeners = [];
 let fbRef = null;
 let online = false;
-let tripId = DEFAULT_TRIP_ID;
+let activeId = DEFAULT_TRIP_ID;
+let fbDb = null;       // firebase database handle (for creating refs)
+let indexRef = null;   // shared registry of tournaments
+let index = {};        // { tripId: { name, created } }
 
 export function emptyState() {
   return {
@@ -43,7 +46,8 @@ export function uid(prefix) {
 
 export function get() { return state; }
 export function isOnline() { return online; }
-export function getTripId() { return tripId; }
+export function getTripId() { return activeId; }
+export function getActiveId() { return activeId; }
 
 export function subscribe(fn) {
   listeners.push(fn);
@@ -86,6 +90,7 @@ function persistLocal() {
 
 /* ---- mutations ---- */
 export function update(mutator) {
+  const prevName = state.tournament && state.tournament.name;
   const prev = fbRef ? snapshot() : null;
   mutator(state);
   persistLocal();
@@ -94,6 +99,9 @@ export function update(mutator) {
     const keys = Object.keys(diff);
     if (keys.length) fbRef.update(diff).catch((e) => console.warn('sync write failed', e));
   }
+  // keep the tournament registry name in sync
+  const newName = state.tournament && state.tournament.name;
+  if (newName && newName !== prevName) registerInIndex(activeId, newName);
   notify();
 }
 
@@ -101,6 +109,7 @@ export function replaceAll(next) {
   state = normalize(Object.assign(emptyState(), next));
   persistLocal();
   if (fbRef) fbRef.set(state).catch((e) => console.warn('sync replace failed', e)); // deliberate full overwrite
+  registerInIndex(activeId, state.tournament && state.tournament.name);
   notify();
 }
 
@@ -108,39 +117,112 @@ export function exportJSON() { return JSON.stringify(state, null, 2); }
 export function importJSON(json) { replaceAll(typeof json === 'string' ? JSON.parse(json) : json); }
 export function setMe(playerId) { update((s) => { s.ui = s.ui || {}; s.ui.meId = playerId; }); }
 
+/* ---- tournaments registry ---- */
+function nowStamp() { try { return Date.now(); } catch (e) { return 0; } }
+function slug(s) { return String(s || 'trip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'trip'; }
+function loadLocalIndex() { try { index = JSON.parse(localStorage.getItem('golftrip-v2-index') || '{}') || {}; } catch (e) { index = {}; } }
+function saveLocalIndex() { try { localStorage.setItem('golftrip-v2-index', JSON.stringify(index)); } catch (e) {} }
+function registerInIndex(id, name) {
+  const entry = index[id] || { created: nowStamp() };
+  if (name) entry.name = name;
+  index[id] = entry;
+  saveLocalIndex();
+  if (indexRef) { const patch = {}; patch[id] = entry; indexRef.update(patch).catch(() => {}); }
+}
+
+export function listTournaments() {
+  return Object.keys(index)
+    .map((id) => ({ id, name: (index[id] && index[id].name) || id, created: (index[id] && index[id].created) || 0 }))
+    .sort((a, b) => b.created - a.created);
+}
+
+function onRemote(snap) {
+  const remote = snap.val();
+  if (!remote) { if (fbRef) fbRef.set(state).catch(() => {}); return; } // seed empty trip with local
+  const next = normalize(Object.assign(emptyState(), remote));
+  if (JSON.stringify(next) === JSON.stringify(state)) return; // our own echo
+  state = next;
+  persistLocal();
+  notify();
+}
+
+/* Open a tournament by id: detach old listener, load its data, attach new. */
+function openTournament(id) {
+  if (fbRef) { try { fbRef.off(); } catch (e) {} fbRef = null; }
+  activeId = id;
+  LS_KEY = 'golftrip-v2:' + id;
+  state = emptyState();
+  try { const c = localStorage.getItem(LS_KEY); if (c) state = normalize(Object.assign(emptyState(), JSON.parse(c))); } catch (e) {}
+  try { localStorage.setItem('golftrip-v2-active', id); } catch (e) {}
+  if (fbDb) {
+    fbRef = fbDb.ref('trips/' + id);
+    fbRef.on('value', onRemote);
+  }
+  registerInIndex(id, state.tournament && state.tournament.name);
+  notify();
+}
+
+export function switchTournament(id) { if (id && id !== activeId) openTournament(id); }
+
+export function createTournament(opts) {
+  const name = (opts && opts.name) || 'New Tournament';
+  const mode = (opts && opts.mode) || 'blank';
+  const id = slug(name) + '-' + Math.random().toString(36).slice(2, 6);
+  let init;
+  if (mode === 'copy') {
+    init = JSON.parse(JSON.stringify(state)); // duplicate current setup, clear scores
+    Object.values(init.rounds || {}).forEach((r) => { r.scores = {}; r.teamScores = {}; r.status = 'auto'; });
+    init.ui = { meId: null };
+  } else {
+    init = emptyState();
+    init.squads = { red: { name: 'Team Red', color: '#D0021B' }, blue: { name: 'Team Blue', color: '#1B6FB3' } };
+  }
+  init.tournament.name = name;
+  init.tournament.id = id;
+  init.tournament.joinCode = '';
+  openTournament(id);   // switch to the (empty) new node
+  replaceAll(init);     // write the initial state (local + firebase set)
+  registerInIndex(id, name);
+  return id;
+}
+
+export function deleteTournament(id) {
+  delete index[id];
+  saveLocalIndex();
+  if (indexRef) indexRef.child(id).remove().catch(() => {});
+  if (fbDb) fbDb.ref('trips/' + id).remove().catch(() => {});
+  try { localStorage.removeItem('golftrip-v2:' + id); } catch (e) {}
+  if (id === activeId) {
+    const remaining = listTournaments()[0];
+    openTournament(remaining ? remaining.id : DEFAULT_TRIP_ID);
+  } else {
+    notify();
+  }
+}
+
 /* ---- init ---- */
 export function init() {
-  // resolve trip id (URL override) before keying local cache
-  try {
-    const p = new URLSearchParams(location.search);
-    if (p.get('trip')) tripId = p.get('trip');
-  } catch (e) { /* no location (tests) */ }
-  LS_KEY = 'golftrip-v2:' + tripId;
+  loadLocalIndex();
 
-  try {
-    const cached = localStorage.getItem(LS_KEY);
-    if (cached) state = normalize(Object.assign(emptyState(), JSON.parse(cached)));
-  } catch (e) { /* ignore */ }
-
+  // firebase (once) — provides fbDb + the shared tournaments index
   const fb = (typeof window !== 'undefined') ? window.firebase : undefined;
   if (isFirebaseConfigured() && fb) {
     try {
       if (!fb.apps || !fb.apps.length) fb.initializeApp(firebaseConfig);
-      fbRef = fb.database().ref('trips/' + tripId);
-      fbRef.on('value', (snap) => {
-        const remote = snap.val();
-        if (!remote) { fbRef.set(state).catch(() => {}); return; } // seed empty trip with local
-        const next = normalize(Object.assign(emptyState(), remote));
-        if (JSON.stringify(next) === JSON.stringify(state)) return; // our own echo
-        state = next;
-        persistLocal();
-        notify();
-      });
+      fbDb = fb.database();
       online = true;
+      indexRef = fbDb.ref('tripsIndex');
+      indexRef.on('value', (snap) => { const v = snap.val() || {}; index = Object.assign({}, index, v); saveLocalIndex(); notify(); });
     } catch (e) {
       console.warn('Firebase init failed; staying local-only.', e);
       online = false;
     }
   }
-  notify();
+
+  // resolve which tournament to open: ?trip= (explicit link) > last active > default
+  let startId = DEFAULT_TRIP_ID;
+  try { const last = localStorage.getItem('golftrip-v2-active'); if (last) startId = last; } catch (e) {}
+  try { const p = new URLSearchParams(location.search); if (p.get('trip')) startId = p.get('trip'); } catch (e) {}
+
+  openTournament(startId);
 }

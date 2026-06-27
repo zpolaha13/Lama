@@ -11,6 +11,7 @@ globalThis.window = globalThis;
 globalThis.localStorage = { _d: {}, getItem(k) { return this._d[k] ?? null; }, setItem(k, v) { this._d[k] = v; }, removeItem(k) { delete this._d[k]; } };
 globalThis.confirm = () => true;
 globalThis.alert = (m) => console.log('alert:', m);
+globalThis.prompt = () => 'Test Cup 2027';
 globalThis.Blob = class {}; globalThis.URL = { createObjectURL: () => 'blob:', revokeObjectURL() {} };
 const docEl = { _a: {}, getAttribute(k) { return this._a[k] ?? null; }, setAttribute(k, v) { this._a[k] = v; } };
 globalThis.document = {
@@ -34,6 +35,7 @@ function check(label) {
   else console.log('ok', label, 'len', len);
 }
 
+const Store = await import('../js/store.js'); // same singleton the app uses
 await import('../js/app.js');           // boots: renders empty state
 check('empty');
 
@@ -74,6 +76,13 @@ fireClick({ action: 'tab', tab: 'mycard' }); fireChange({ action: 'pick-me' }, '
 
 // setup: flexible teams + manual matchup editor
 fireClick({ action: 'tab', tab: 'setup' }); check('setup');
+// multi-tournament: create a copy, then a blank, then switch back
+fireClick({ action: 'new-tourney-copy' }); check('new-tourney-copy');
+const tourneys = Store.listTournaments();
+if (tourneys.length < 2) { errors++; console.log('TOURNEY list too short', tourneys.length); } else console.log('ok tournaments listed', tourneys.length);
+const original = tourneys.find((x) => x.id !== Store.getActiveId());
+if (original) { fireClick({ action: 'switch-tourney', id: original.id }); check('switch-tourney'); }
+fireClick({ action: 'tab', tab: 'setup' });
 fireClick({ action: 'add-squad' }); check('add-squad');
 fireClick({ action: 'add-player' }); check('add-player');
 fireClick({ action: 'add-match', rid: 'r1' }); check('add-match');

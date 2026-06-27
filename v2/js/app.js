@@ -37,7 +37,7 @@ function teeNameFor(p, r) { const c = course(r.courseId); const tid = resolveTee
 function render() {
   document.getElementById('tripName') && (document.getElementById('tripName').textContent = S().tournament.name);
   let body;
-  if (!hasData()) body = viewEmpty();
+  if (!hasData() && ui.view !== 'setup') body = viewEmpty();
   else {
     switch (ui.view) {
       case 'home': body = viewHome(); break;
@@ -89,7 +89,6 @@ function hero() {
 
 /* ---------------- bottom tab bar ---------------- */
 function tabbar() {
-  if (!hasData()) return '';
   const root = ({ round: 'rounds', score: 'rounds' }[ui.view]) || ui.view;
   const tab = (id, ic, label) => `<button data-action="tab" data-tab="${id}" class="${root === id ? 'active' : ''}"><span class="ic">${ic}</span>${label}</button>`;
   return `<nav class="tabbar">
@@ -109,8 +108,9 @@ function viewEmpty() {
     <p class="muted">Your trip is one <b>Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your <b>team</b>. First team to the target wins the Cup.</p>
     <div class="btn-row" style="margin-top:16px">
       <button class="btn" data-action="load-sample">Load the sample trip</button>
+      <button class="btn secondary" data-action="tab" data-tab="setup">Build in Setup ⚙️</button>
     </div>
-    <p class="muted" style="margin-top:12px;font-size:13px">Loads the 3-round trip (Legacy · Mid South · Talamore, 2 teams of 4) so you can explore, then edit everything in Setup.</p>
+    <p class="muted" style="margin-top:12px;font-size:13px">The sample loads the 3-round Pinehurst trip so you can explore, then edit everything in Setup — or build from scratch.</p>
   </div></div>`;
 }
 
@@ -554,15 +554,40 @@ function courseEditor() {
   return html;
 }
 
+/* tournaments: create new / switch / see past ones */
+function tournamentsCard() {
+  const list = Store.listTournaments();
+  const active = Store.getActiveId();
+  const rows = list.map((t) => `<div class="list-row" ${t.id === active ? 'style="border-color:var(--green)"' : ''}>
+      <div style="flex:1;min-width:0"><b>${esc(t.name || t.id)}</b>${t.id === active ? ' <span class="muted">· current</span>' : ''}
+        <div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis">${esc(t.id)}</div></div>
+      ${t.id === active ? '' : `<button class="btn small secondary" data-action="switch-tourney" data-id="${t.id}">Open</button>`}
+      ${list.length > 1 ? `<button class="btn small danger" data-action="del-tourney" data-id="${t.id}">×</button>` : ''}
+    </div>`).join('');
+  return `<div class="card"><h2>Tournaments</h2>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Each trip is its own tournament. Create a new one for the next trip and switch back any time to see past results. ${Store.isOnline() ? '' : '<i>(Live sync off — tournaments are on this device only.)</i>'}</div>
+    ${rows || '<div class="muted" style="font-size:13px">No tournaments yet.</div>'}
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn small" data-action="new-tourney-copy">+ New (reuse this setup)</button>
+      <button class="btn small secondary" data-action="new-tourney-blank">+ New (blank)</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:6px">"Reuse this setup" copies the courses, players &amp; teams into a fresh tournament with scores cleared.</div>
+  </div>`;
+}
+
 /* ---------------- SETUP (commissioner, lite) ---------------- */
 function viewSetup() {
   const st = S();
-  let html = `<div class="card"><h2>Tournament</h2>
+  let html = tournamentsCard();
+
+  const stand = computeStandings(st);
+  html += `<div class="card"><h2>This tournament</h2>
     <div class="field"><label>Name</label><input data-action="trip-name" value="${esc(st.tournament.name)}"></div>
     <div class="grid2">
-      <div class="field"><label>Weighting</label><select data-action="set-weight"><option value="true" ${st.tournament.weightMode !== 'normalized' ? 'selected' : ''}>True points</option><option value="normalized" ${st.tournament.weightMode === 'normalized' ? 'selected' : ''}>Equal-weight rounds</option></select></div>
+      <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${st.tournament.weightMode !== 'normalized' ? 'selected' : ''}>True points</option><option value="normalized" ${st.tournament.weightMode === 'normalized' ? 'selected' : ''}>Equal-weight rounds</option></select></div>
       <div class="field"><label>Equal-weight target</label><input type="number" data-action="set-normtarget" value="${st.tournament.normalizeTarget}"></div>
     </div>
+    <div class="tip" style="margin-top:4px"><b>Target to win: ${stand.target}</b> (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value (singles ${roundIds().length ? '' : ''}= more matches = more points); "Equal-weight" makes every round worth the same so no single day dominates. Leave on <b>True points</b> if unsure.</div>
   </div>`;
 
   // squads (add / remove — any number of teams)
@@ -645,7 +670,11 @@ function sheet() {
     <h2>How the Cup works</h2>
     <p>Your trip is <b>one Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your team. <b>First to ${stand.target} wins the Cup.</b></p>
     <div style="margin:12px 0">${rules}</div>
-    <p class="muted" style="font-size:13px">Every player gets handicap strokes based on the tee's slope &amp; rating (red dots on the card). Scoring mode: <b>${st.tournament.weightMode === 'normalized' ? 'equal-weight rounds' : 'true points'}</b>.</p>
+    <div class="rule"><b>Target (${stand.target})</b><div class="ex">There are <b>${stand.totalAvailable} points</b> up for grabs across all rounds. A team clinches the Cup once it has more than half — so first to <b>${stand.target}</b>.</div></div>
+    <div class="rule"><b>Round weighting — ${st.tournament.weightMode === 'normalized' ? 'Equal-weight' : 'True points'}</b><div class="ex">${st.tournament.weightMode === 'normalized'
+      ? 'Every round is worth the same toward the Cup, so no single day dominates.'
+      : 'Each round counts at face value — a round with more matches puts more points in play. (Switch to "Equal-weight" in Setup if you\'d rather every round count the same.)'}</div></div>
+    <p class="muted" style="font-size:13px">Every player gets handicap strokes based on the tee\'s slope &amp; rating (the red dots on the scorecard).</p>
     <button class="btn" data-action="close-sheet">Got it</button>
   </div></div>`;
 }
@@ -699,6 +728,10 @@ app.addEventListener('click', (e) => {
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
     'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '' }; }),
     'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
+    'switch-tourney': () => { ui.view = 'home'; ui.scope = 'overall'; Store.switchTournament(t.dataset.id); },
+    'del-tourney': () => { const tn = (Store.listTournaments().find((x) => x.id === t.dataset.id) || {}).name || t.dataset.id; if (confirm('Delete tournament "' + tn + '"? This removes it for everyone and cannot be undone.')) Store.deleteTournament(t.dataset.id); },
+    'new-tourney-copy': () => { const n = prompt('Name the new tournament:', 'Golf Trip'); if (n) { ui.view = 'setup'; Store.createTournament({ name: n, mode: 'copy' }); } },
+    'new-tourney-blank': () => { const n = prompt('Name the new tournament:'); if (n) { ui.view = 'setup'; Store.createTournament({ name: n, mode: 'blank' }); } },
     'add-course': () => Store.update((s) => { const id = Store.uid('c'); s.courses[id] = { id, name: 'New Course', tees: { [Store.uid('tee')]: { name: 'White', rating: 71.0, slope: 113 } }, holes: blankHoles(18) }; }),
     'del-course': () => Store.update((s) => { const del = t.dataset.id; delete s.courses[del]; Object.values(s.rounds).forEach((r) => { if (r.courseId === del) { r.courseId = ''; r.defaultTeeId = ''; } }); }),
     'add-tee': () => Store.update((s) => { const c = s.courses[t.dataset.cid]; if (c) { c.tees = c.tees || {}; c.tees[Store.uid('tee')] = { name: 'Tee', rating: 71.0, slope: 113 }; } }),

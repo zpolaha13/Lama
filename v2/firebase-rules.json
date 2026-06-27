@@ -1,0 +1,16 @@
+{
+  "_comment": "Realtime Database rules for the Golf Trip app. Paste the rules object below into Firebase Console -> Realtime Database -> Rules -> Publish. This replaces the 30-day test-mode rules with permanent ones. Security model: no login; the unguessable trip id in the share link is the access key (fine for casual golf scores). The .validate caps write size to keep abuse cheap.",
+  "rules": {
+    "trips": {
+      ".read": true,
+      "$tripId": {
+        ".write": true,
+        ".validate": "newData.hasChildren() || !newData.exists()"
+      }
+    },
+    "tripsIndex": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
