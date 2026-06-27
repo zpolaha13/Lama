@@ -57,6 +57,43 @@ function roundHasScores(round) {
   return false;
 }
 
+/* ---- handicap allowance / basis ----
+ * round.scoringRule.handicapAllowance: percent applied to each course handicap (default 100).
+ * round.scoringRule.handicapMode: 'absolute' (each off their own) | 'relative' (off the low
+ *   player in the match — lowest plays scratch, others get the difference). */
+export function ruleHandicap(round) {
+  const r = round.scoringRule || {};
+  return {
+    allowance: r.handicapAllowance == null ? 100 : Number(r.handicapAllowance),
+    mode: r.handicapMode || 'absolute',
+  };
+}
+export function effectiveCH(state, player, round) {
+  const { allowance } = ruleHandicap(round);
+  return Math.round(chFor(state, player, round) * (allowance / 100));
+}
+
+/* Effective playing handicaps for everyone in a match, honoring allowance + basis.
+ * For 'relative', strokes are shifted so the lowest in the match plays off scratch. */
+export function matchHandicaps(state, round, pairing) {
+  const { mode } = ruleHandicap(round);
+  if (round.format === 'scramble') {
+    const aEff = (pairing.teamA || []).map((pid) => effectiveCH(state, state.players[pid], round));
+    const bEff = (pairing.teamB || []).map((pid) => effectiveCH(state, state.players[pid], round));
+    let chA = aEff.length >= 2 ? scrambleHandicap(aEff[0], aEff[1]) : (aEff[0] || 0);
+    let chB = bEff.length >= 2 ? scrambleHandicap(bEff[0], bEff[1]) : (bEff[0] || 0);
+    if (mode === 'relative') { const m = Math.min(chA, chB); chA -= m; chB -= m; }
+    return { scramble: true, teamA: chA, teamB: chB, byPlayer: {} };
+  }
+  const all = [...(pairing.teamA || []), ...(pairing.teamB || [])];
+  const eff = {};
+  all.forEach((pid) => { eff[pid] = effectiveCH(state, state.players[pid], round); });
+  const shift = (mode === 'relative' && all.length) ? Math.min(...all.map((pid) => eff[pid])) : 0;
+  const byPlayer = {};
+  all.forEach((pid) => { byPlayer[pid] = eff[pid] - shift; });
+  return { scramble: false, byPlayer };
+}
+
 /* ---- resolve one pairing into a match ---- */
 export function resolvePairingMatch(state, round, pairing) {
   const course = state.courses[round.courseId];
@@ -64,24 +101,21 @@ export function resolvePairingMatch(state, round, pairing) {
   const holes = course.holes;
   const squadA = squadOfTeam(state, pairing.teamA);
   const squadB = squadOfTeam(state, pairing.teamB);
+  const hc = matchHandicaps(state, round, pairing);
   let netsA, netsB, chA, chB;
 
   if (round.format === 'scramble') {
-    const aPlayers = (pairing.teamA || []).map((pid) => chFor(state, state.players[pid], round));
-    const bPlayers = (pairing.teamB || []).map((pid) => chFor(state, state.players[pid], round));
-    chA = aPlayers.length >= 2 ? scrambleHandicap(aPlayers[0], aPlayers[1]) : (aPlayers[0] || 0);
-    chB = bPlayers.length >= 2 ? scrambleHandicap(bPlayers[0], bPlayers[1]) : (bPlayers[0] || 0);
+    chA = hc.teamA; chB = hc.teamB;
     netsA = scrambleNets(chA, holes, (h) => getTeamScore(round, pairing.id, 'A', h));
     netsB = scrambleNets(chB, holes, (h) => getTeamScore(round, pairing.id, 'B', h));
   } else {
-    // singles & fourball (best-ball of the side; singles = best of 1)
-    const pa = (pairing.teamA || []).map((pid) => ({ id: pid, courseHandicap: chFor(state, state.players[pid], round) }));
-    const pb = (pairing.teamB || []).map((pid) => ({ id: pid, courseHandicap: chFor(state, state.players[pid], round) }));
+    const pa = (pairing.teamA || []).map((pid) => ({ id: pid, courseHandicap: hc.byPlayer[pid] || 0 }));
+    const pb = (pairing.teamB || []).map((pid) => ({ id: pid, courseHandicap: hc.byPlayer[pid] || 0 }));
     netsA = bestBallNets(pa, holes, (pid, h) => getScore(round, pid, h));
     netsB = bestBallNets(pb, holes, (pid, h) => getScore(round, pid, h));
   }
   const m = matchFromNets(netsA, netsB, holes.length);
-  return { pairing, squadA, squadB, chA, chB, m };
+  return { pairing, squadA, squadB, chA, chB, hc, m };
 }
 
 /* ---- resolve a whole round ---- */
@@ -90,13 +124,17 @@ export function resolveRound(state, round) {
   const raw = {};
   Object.keys(state.squads).forEach((sid) => (raw[sid] = 0));
   let pointsAvailable = 0;
-  const win = state.tournament.winPoints != null ? state.tournament.winPoints : 1;
-  const tie = state.tournament.tiePoints != null ? state.tournament.tiePoints : 0.5;
+  // points awarded for winning a match in this round (tie = half). Per-round override,
+  // else tournament default, else 1.
+  const rule = round.scoringRule || {};
+  const win = rule.pointsPerMatch != null ? Number(rule.pointsPerMatch)
+    : (state.tournament.winPoints != null ? state.tournament.winPoints : 1);
+  const tie = win / 2;
 
   (round.pairings || []).forEach((pairing) => {
     const res = resolvePairingMatch(state, round, pairing);
     if (!res) return;
-    pointsAvailable += 1;
+    pointsAvailable += win;
     if (res.m.result === 'A') raw[res.squadA] = (raw[res.squadA] || 0) + win;
     else if (res.m.result === 'B') raw[res.squadB] = (raw[res.squadB] || 0) + win;
     else if (res.m.result === 'AS') {

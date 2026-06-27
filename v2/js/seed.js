@@ -71,9 +71,9 @@ export function sampleTournament() {
 
 export const FORMAT_INFO = {
   singles: { label: 'Singles Match', short: '1v1', perSide: 1,
-    explainer: 'You vs one opponent. Low net wins each hole. Win the match = 1 point for your team.' },
+    explainer: 'You vs one opponent. Low net wins each hole. Win the match to score for your team.' },
   fourball: { label: 'Fourball (Best Ball)', short: '2v2', perSide: 2,
-    explainer: 'You and a partner each play your own ball; your better net counts each hole. Win the match = 1 point for your team.' },
+    explainer: 'You and a partner each play your own ball; your better net counts each hole. Win the match to score for your team.' },
   scramble: { label: 'Texas Scramble', short: '2v2', perSide: 2,
-    explainer: 'You and a partner play one ball from the best shot each time, against the other team\'s scramble. Win the match = 1 point for your team.' },
+    explainer: 'You and a partner play one ball from the best shot each time, against the other team\'s scramble. Win the match to score for your team.' },
 };

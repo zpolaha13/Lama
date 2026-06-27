@@ -81,6 +81,9 @@ fireClick({ action: 'add-match', rid: 'r1' }); check('add-match');
 const opt = [...appEl.innerHTML.matchAll(/data-action="madd"[^>]*data-rid="r1"[^>]*data-mid="([^"]+)"[^>]*data-side="A"/g)][0];
 if (opt) { /* the select exists; simulate choosing first available */ }
 fireClick({ action: 'auto-pair', id: 'r1' }); check('auto-pair-12');
+fireChange({ action: 'round-ppm', id: 'r1' }, '2');
+fireChange({ action: 'round-hcpallow', id: 'r1' }, '80');
+fireChange({ action: 'round-hcpmode', id: 'r1' }, 'relative'); check('round-config');
 fireClick({ action: 'del-player', id: 'p12' }); check('del-player');
 
 // how-it-works sheet

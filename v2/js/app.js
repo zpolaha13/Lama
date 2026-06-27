@@ -6,7 +6,7 @@
  * ========================================================================= */
 import * as Store from './store.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
@@ -235,7 +235,7 @@ function viewRoundDetail() {
         <div><h2 style="margin:0">${esc(r.name)}</h2><div class="muted" style="font-size:13px">${c ? esc(c.name) : ''} · ${fmtInfo(r.format).label}</div></div>
         <span class="status ${rr.status}">${rr.status === 'live' ? '<span class="live-pulse"></span>Live' : rr.status}</span>
       </div>
-      <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} <b>${rr.pointsAvailable} points in play.</b></div>
+      <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} <b>${rr.pointsAvailable} points in play</b> · ${esc(hcpLabel(r))}.</div>
       <button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
     </div>
     ${roundBoard(rr)}
@@ -256,7 +256,19 @@ function skinsCfg(rid) {
 function roundPlayersCH(r) {
   const ids = [];
   (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => { if (!ids.includes(id)) ids.push(id); }));
-  return ids.filter((id) => player(id)).map((id) => ({ id, name: player(id).name, courseHandicap: chFor(S(), player(id), r) }));
+  const list = ids.filter((id) => player(id));
+  // honor the round's allowance + basis for skins too (relative = off the field's low)
+  const { mode, allowance } = ruleHandicap(r);
+  const eff = list.map((id) => Math.round(chFor(S(), player(id), r) * (allowance / 100)));
+  const shift = (mode === 'relative' && eff.length) ? Math.min(...eff) : 0;
+  return list.map((id, i) => ({ id, name: player(id).name, courseHandicap: eff[i] - shift }));
+}
+
+/* label for a round's handicap setting, e.g. "Full handicap", "80% off the low" */
+function hcpLabel(r) {
+  const { allowance, mode } = ruleHandicap(r);
+  const pct = allowance === 100 ? 'Full' : allowance + '%';
+  return pct + (mode === 'relative' ? ' off the low' : ' handicap');
 }
 function computeRoundSkins(r) {
   const cfg = skinsCfg(r.id);
@@ -370,9 +382,10 @@ function viewScore() {
     }).join('');
   } else {
     const ids = [...pairing.teamA, ...pairing.teamB];
+    const hc = matchHandicaps(S(), r, pairing);
     units = ids.map((pid) => {
       const p = player(pid);
-      const ch = chFor(S(), p, r);
+      const ch = hc.byPlayer[pid] || 0;
       const val = getScore(r, pid, h);
       return unitRow({ rid: r.id, target: `player:${pid}`, name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch, val, hole, holes: c.holes.length });
     }).join('');
@@ -521,6 +534,14 @@ function viewSetup() {
         <div class="field"><label>Format</label><select data-action="round-format" data-id="${id}">${Object.keys(FORMAT_INFO).map((f) => `<option value="${f}" ${r.format === f ? 'selected' : ''}>${FORMAT_INFO[f].label}</option>`).join('')}</select></div>
         <div class="field"><label>Course</label><select data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
+      <div class="grid3">
+        <div class="field"><label>Points / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
+        <div class="field"><label>Handicap %</label><input type="number" step="5" min="0" max="100" data-action="round-hcpallow" data-id="${id}" value="${ruleHandicap(r).allowance}"></div>
+        <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
+          <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each off own</option>
+          <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off the low</option>
+        </select></div>
+      </div>
       <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
 
@@ -537,7 +558,7 @@ function sheet() {
   if (ui.sheet !== 'how') return '';
   const st = S();
   const stand = computeStandings(st);
-  const rules = roundIds().map((id, i) => { const r = round(id); const f = fmtInfo(r.format); return `<div class="rule"><b>R${i + 1}: ${esc(r.name.replace(/^Round \d+ — /, ''))} — ${f.label}</b><div class="ex">${esc(f.explainer)}</div></div>`; }).join('');
+  const rules = stand.rounds.map((rr, i) => { const r = round(rr.roundId); const f = fmtInfo(r.format); return `<div class="rule"><b>R${i + 1}: ${esc(r.name.replace(/^Round \d+ — /, ''))} — ${f.label}</b><div class="ex">${esc(f.explainer)} <b>${rr.pointsAvailable} pts</b> · ${esc(hcpLabel(r))}.</div></div>`; }).join('');
   return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
     <h2>How the Cup works</h2>
     <p>Your trip is <b>one Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your team. <b>First to ${stand.target} wins the Cup.</b></p>
@@ -616,6 +637,9 @@ app.addEventListener('change', (e) => {
     'round-name': () => Store.update((s) => { s.rounds[t.dataset.id].name = v; }),
     'round-format': () => Store.update((s) => { s.rounds[t.dataset.id].format = v; }),
     'round-course': () => Store.update((s) => { s.rounds[t.dataset.id].courseId = v; }),
+    'round-ppm': () => ruleSet(t.dataset.id, { pointsPerMatch: v === '' ? 1 : Number(v) }),
+    'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
+    'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
     madd: () => { if (!v) return; Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = p[k] || []; if (!p[k].includes(v)) p[k].push(v); }); },
     'skin-enabled': () => skinSet(t.dataset.rid, { enabled: v === 'on' }),
     'skin-mode': () => skinSet(t.dataset.rid, { mode: v }),
@@ -632,6 +656,12 @@ function skinSet(rid, patch) {
   });
 }
 function firstTee(s) { for (const cid in s.courses) { const tt = s.courses[cid].tees; const k = tt && Object.keys(tt)[0]; if (k) return k; } return ''; }
+function ruleSet(rid, patch) {
+  Store.update((s) => {
+    const r = s.rounds[rid];
+    r.scoringRule = Object.assign({ pointsPerMatch: 1, handicapAllowance: 100, handicapMode: 'absolute' }, r.scoringRule, patch);
+  });
+}
 
 /* score mutations */
 function stepScore(rid, target, dir) {

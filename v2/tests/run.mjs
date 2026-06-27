@@ -1,6 +1,6 @@
 /* Node test runner for the v2 engine + standings. Run: node tests/run.mjs */
 import * as G from '../js/engine/golf.js';
-import { computeStandings, resolveRound, chFor } from '../js/engine/standings.js';
+import { computeStandings, resolveRound, chFor, matchHandicaps, effectiveCH } from '../js/engine/standings.js';
 
 let pass = 0, fail = 0;
 function eq(a, b, msg) {
@@ -119,6 +119,32 @@ const pay = G.skinsPayouts(10, pl, sp.skinsByPlayer, sp.totalSkins);
 eq(pay.pot, 30, 'skins pot 30');
 eq(pay.payouts.a, 25, 'split a $25');
 eq(pay.payouts.b, 5, 'split b $5');
+
+/* ---------------- custom points per match ---------------- */
+const stPts = mkState('true');
+['p1', 'p2', 'p3', 'p4'].forEach((pid) => { stPts.rounds.r1.scores[pid] = {}; for (let h = 0; h < 18; h++) stPts.rounds.r1.scores[pid][h] = 4; });
+['q1', 'q2', 'q3', 'q4'].forEach((pid) => { stPts.rounds.r1.scores[pid] = {}; for (let h = 0; h < 18; h++) stPts.rounds.r1.scores[pid][h] = 5; });
+stPts.rounds.r1.scoringRule = { pointsPerMatch: 2 };           // each singles match worth 2
+const r1p = resolveRound(stPts, stPts.rounds.r1);
+eq(r1p.pointsAvailable, 8, 'ppm=2 over 4 matches -> 8 available');
+eq(r1p.raw.red, 8, 'red sweeps 4 matches x2 = 8');
+
+/* ---------------- handicap allowance + basis ---------------- */
+const stH = mkState('true');
+stH.players.p1.index = 10;   // CH 10 on par72/113
+stH.players.q1.index = 4;    // CH 4
+// absolute 80%: p1 -> round(10*.8)=8, q1 -> round(4*.8)=3
+stH.rounds.r1.scoringRule = { handicapAllowance: 80, handicapMode: 'absolute' };
+eq(effectiveCH(stH, stH.players.p1, stH.rounds.r1), 8, '80% of 10 = 8');
+eq(effectiveCH(stH, stH.players.q1, stH.rounds.r1), 3, '80% of 4 = 3');
+const hAbs = matchHandicaps(stH, stH.rounds.r1, stH.rounds.r1.pairings[0]);
+eq(hAbs.byPlayer.p1, 8, 'absolute p1 ch 8');
+eq(hAbs.byPlayer.q1, 3, 'absolute q1 ch 3');
+// relative (off the low): subtract min(8,3)=3 -> p1 5, q1 0
+stH.rounds.r1.scoringRule = { handicapAllowance: 80, handicapMode: 'relative' };
+const hRel = matchHandicaps(stH, stH.rounds.r1, stH.rounds.r1.pairings[0]);
+eq(hRel.byPlayer.p1, 5, 'relative p1 gets 5 (8-3)');
+eq(hRel.byPlayer.q1, 0, 'relative low man plays scratch');
 
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);
