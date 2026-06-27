@@ -1,6 +1,7 @@
 /* Node test runner for the v2 engine + standings. Run: node tests/run.mjs */
 import * as G from '../js/engine/golf.js';
 import { computeStandings, resolveRound, chFor, matchHandicaps, effectiveCH } from '../js/engine/standings.js';
+import { diffPaths } from '../js/store.js';
 
 let pass = 0, fail = 0;
 function eq(a, b, msg) {
@@ -162,6 +163,24 @@ eq(chFor(stT, stT.players.p1, stT.rounds.r1), 17, 'blue tee override CH 17');
 // clearing override falls back to round default tee
 delete stT.rounds.r1.teeOverrides.p1;
 eq(chFor(stT, stT.players.p1, stT.rounds.r1), 10, 'fallback to round tee');
+
+/* ---------------- sync diff (conflict-free per-path writes) ---------------- */
+// a single score change yields exactly one leaf path
+const before = { rounds: { r1: { scores: { p1: { 0: 4 }, p2: { 0: 5 } } } } };
+const after = { rounds: { r1: { scores: { p1: { 0: 4, 1: 3 }, p2: { 0: 5 } } } } };
+eq(diffPaths(before, after, '', {}), { 'rounds/r1/scores/p1/1': 3 }, 'diff: one new score = one path');
+// adding a new player writes only that new subtree (p1 untouched -> no clobber)
+const d2 = diffPaths({ s: { p1: { 0: 4 } } }, { s: { p1: { 0: 4 }, p2: { 0: 6 } } }, '', {});
+eq(d2, { 's/p2': { 0: 6 } }, 'diff: new player is an isolated subtree');
+// editing an existing player on a new hole is a single leaf path
+const d3 = diffPaths({ s: { p1: { 0: 4 }, p2: { 0: 5 } } }, { s: { p1: { 0: 4 }, p2: { 0: 5, 7: 3 } } }, '', {});
+eq(d3, { 's/p2/7': 3 }, 'diff: existing player new hole = one leaf');
+// deletion -> null
+eq(diffPaths({ a: { x: 1, y: 2 } }, { a: { x: 1 } }, '', {}), { 'a/y': null }, 'diff: removal -> null');
+// arrays are atomic
+eq(diffPaths({ p: [1, 2] }, { p: [1, 2, 3] }, '', {}), { p: [1, 2, 3] }, 'diff: array atomic');
+// no change -> empty
+eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = empty');
 
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

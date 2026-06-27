@@ -5,6 +5,7 @@
  * (no text-focus to preserve), so full re-render is safe and simple.
  * ========================================================================= */
 import * as Store from './store.js';
+import { isFirebaseConfigured } from './config.js';
 import * as Eng from './engine/golf.js';
 import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
@@ -75,12 +76,14 @@ function hero() {
     <div class="hero-top">
       <span class="hero-title">${esc(st.tournament.name)}</span>
       <div class="hero-actions">
+        ${Store.isOnline() ? '<button class="icon-btn" data-action="share" title="Share live link">⇪</button>' : ''}
         <button class="icon-btn" data-action="sheet" data-sheet="how" title="How it works">?</button>
         <button class="icon-btn" data-action="boost" title="Sunlight boost">☀</button>
         <button class="icon-btn" data-action="theme" title="Theme">◐</button>
       </div>
     </div>
     ${two}${clinchBadge}
+    <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
   </div>`;
 }
 
@@ -611,6 +614,19 @@ function viewSetup() {
       <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
 
+  // sync status
+  const online = Store.isOnline();
+  html += `<div class="card"><h2>Live sync</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div><div style="font-weight:700">${online ? '● Live multi-phone sync is ON' : '○ Local only (this device)'}</div>
+        <div class="muted" style="font-size:12px">Trip id: <b>${esc(Store.getTripId())}</b></div></div>
+      ${online ? '<button class="btn small" data-action="share">Share link</button>' : ''}
+    </div>
+    ${online
+      ? '<div class="muted" style="font-size:12px;margin-top:8px">Everyone who opens the shared link scores into the same live leaderboard. One scorer per group is smoothest.</div>'
+      : '<div class="tip" style="margin-top:10px">To let everyone score on their own phone: add your free Firebase project to <b>js/config.js</b> (steps are in that file), then re-deploy. Until then, scores stay on this device.</div>'}
+  </div>`;
+
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
     <button class="btn secondary small" data-action="load-sample">Reload sample</button>
     <button class="btn secondary small" data-action="export">Export</button>
@@ -672,6 +688,7 @@ app.addEventListener('click', (e) => {
     'close-sheet': () => { if (e.target.closest('[data-stop]')) return; ui.sheet = null; render(); },
     theme: () => toggleTheme(),
     boost: () => toggleBoost(),
+    share: () => shareLink(),
     export: () => doExport(),
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
     'auto-pair': () => autoPair(t.dataset.id),
@@ -806,6 +823,18 @@ function doExport() {
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function shareLink() {
+  let base = '';
+  try { base = location.origin + location.pathname; } catch (e) {}
+  const url = base + '?trip=' + encodeURIComponent(Store.getTripId());
+  try {
+    if (navigator.share) { navigator.share({ title: S().tournament.name, url }); return; }
+  } catch (e) {}
+  try {
+    navigator.clipboard.writeText(url).then(() => alert('Live link copied!\n\n' + url), () => prompt('Copy this live link:', url));
+  } catch (e) { prompt('Copy this live link:', url); }
+}
+
 function toggleTheme() {
   const root = document.documentElement;
   const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -825,6 +854,16 @@ try {
   const bo = localStorage.getItem('golftrip-boost'); if (bo) document.documentElement.setAttribute('data-boost', bo);
 } catch (e) {}
 
-Store.subscribe(render);
+// Re-render on any state change (local or remote/live). Defer if the user is
+// mid-edit in a text field so a remote update doesn't steal focus.
+let renderDirty = false;
+function isEditingText() {
+  const ae = document.activeElement;
+  return ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA');
+}
+Store.subscribe(() => { if (isEditingText()) { renderDirty = true; return; } render(); });
+if (document.addEventListener) {
+  document.addEventListener('focusout', () => { if (renderDirty) { renderDirty = false; setTimeout(render, 0); } });
+}
 Store.init();
 render();
