@@ -50,6 +50,19 @@ The app runs fine offline, but for everyone to share live scores:
 > The Firebase web config is not a secret — it's safe to commit. Lock the
 > Realtime Database rules down after the trip if you like.
 
+## Hosting it (so everyone can open it on their phone)
+
+This repo includes a GitHub Actions workflow (`.github/workflows/pages.yml`)
+that auto-deploys the app to **GitHub Pages** on every push.
+
+1. In the repo, go to **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. That's it — the next push (or re-run the "Deploy to GitHub Pages" workflow
+   from the **Actions** tab) publishes the site. Pages will show the live URL,
+   something like `https://<you>.github.io/Lama/`.
+4. Share that URL with the group. For live shared scoring, also enable Firebase
+   (below) — otherwise each phone keeps its own local copy.
+
 ## File layout
 
 | File | Purpose |
