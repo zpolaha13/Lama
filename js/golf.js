@@ -215,6 +215,85 @@
   };
 
   /* ----------------------------------------------------------------------
+   * Team match play (fourball / best ball / scramble).
+   *
+   * These build a "net per hole" array for each side, then resolve the match.
+   * A side's hole value is null until it has a usable score that hole.
+   * --------------------------------------------------------------------- */
+
+  /* Best-ball (fourball): a side's hole score is the LOWEST net among its
+   * players. players: [{ id, courseHandicap }]. Singles is just a 1-player side. */
+  Golf.bestBallNets = function (players, holes, getScore) {
+    return holes.map((hole, i) => {
+      let best = null;
+      players.forEach((p) => {
+        const g = getScore(p.id, i);
+        if (g == null || g === '' || isNaN(g)) return;
+        const net = Number(g) - Golf.strokesOnHole(p.courseHandicap, hole.si, holes.length);
+        if (best == null || net < best) best = net;
+      });
+      return best;
+    });
+  };
+
+  /* Scramble: one team gross per hole, minus the team's strokes. */
+  Golf.scrambleNets = function (teamHandicap, holes, getTeamScore) {
+    return holes.map((hole, i) => {
+      const g = getTeamScore(i);
+      if (g == null || g === '' || isNaN(g)) return null;
+      return Number(g) - Golf.strokesOnHole(teamHandicap, hole.si, holes.length);
+    });
+  };
+
+  /* 2-person scramble handicap: 35% of low + 15% of high (USGA recommendation). */
+  Golf.scrambleHandicap = function (chLowFirst, chOther) {
+    const low = Math.min(chLowFirst, chOther);
+    const high = Math.max(chLowFirst, chOther);
+    return Math.round(0.35 * low + 0.15 * high);
+  };
+
+  /* Resolve a match from two net-per-hole arrays.
+   * Returns { status (A minus B), played, remaining, line, result }.
+   * result: 'A' | 'B' | 'AS' | 'IP' (in progress). */
+  Golf.matchFromNets = function (netsA, netsB, holesCount) {
+    let status = 0,
+      played = 0;
+    const line = [];
+    for (let i = 0; i < netsA.length; i++) {
+      if (netsA[i] == null || netsB[i] == null) {
+        line.push(status);
+        continue;
+      }
+      played++;
+      if (netsA[i] < netsB[i]) status++;
+      else if (netsB[i] < netsA[i]) status--;
+      line.push(status);
+    }
+    const H = holesCount || netsA.length;
+    const remaining = H - played;
+    let result;
+    if (played === 0) result = 'IP';
+    else if (Math.abs(status) > remaining) result = status > 0 ? 'A' : 'B'; // closed out
+    else if (played >= H) result = status > 0 ? 'A' : status < 0 ? 'B' : 'AS';
+    else result = 'IP';
+    return { status, played, remaining, line, result };
+  };
+
+  /* Human-readable match state, e.g. "3 & 2", "1 UP", "AS thru 12". */
+  Golf.matchText = function (m, nameA, nameB) {
+    if (m.played === 0) return 'Not started';
+    const leader = m.status > 0 ? nameA : nameB;
+    if (m.result === 'A' || m.result === 'B') {
+      if (m.remaining > 0) return leader + ' won ' + Math.abs(m.status) + ' & ' + m.remaining;
+      return leader + ' won ' + Math.abs(m.status) + ' UP';
+    }
+    if (m.result === 'AS') return 'Halved (AS)';
+    // in progress
+    if (m.status === 0) return 'All square thru ' + m.played;
+    return leader + ' ' + Math.abs(m.status) + ' UP thru ' + m.played;
+  };
+
+  /* ----------------------------------------------------------------------
    * Payout distribution helpers.
    * --------------------------------------------------------------------- */
 

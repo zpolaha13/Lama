@@ -13,12 +13,15 @@
 
   const view = document.getElementById('view');
   const FORMATS = [
+    { id: 'match_singles', name: '1v1 Match Play' },
+    { id: 'fourball', name: '2v2 Best Ball Match' },
+    { id: 'scramble', name: '2v2 Texas Scramble Match' },
     { id: 'stroke_net', name: 'Stroke Play — Net' },
     { id: 'stroke_gross', name: 'Stroke Play — Gross' },
-    { id: 'match_singles', name: 'Singles Match (Ryder)' },
-    { id: 'team_net', name: 'Team Net (best/total)' },
     { id: 'stableford', name: 'Stableford (Net)' },
   ];
+  const MATCH_FORMATS = ['match_singles', 'fourball', 'scramble'];
+  function isMatch(f) { return MATCH_FORMATS.indexOf(f) >= 0; }
 
   const ui = {
     tab: 'leaderboard',
@@ -71,6 +74,51 @@
 
   function getScore(r, pid, h) {
     return r && r.scores && r.scores[pid] ? r.scores[pid][h] : null;
+  }
+  function getTeamScore(r, gid, tid, h) {
+    return r && r.teamScores && r.teamScores[gid] && r.teamScores[gid][tid] ? r.teamScores[gid][tid][h] : null;
+  }
+
+  /* Split a group's players into the two teams present, in team order. */
+  function sidesForGroup(g) {
+    const map = {};
+    (g.playerIds || []).forEach((pid) => {
+      const p = player(pid);
+      if (!p || !p.teamId) return;
+      (map[p.teamId] = map[p.teamId] || []).push(p);
+    });
+    // order by S().teams order for stable display
+    return S().teams.filter((t) => map[t.id]).map((t) => ({ team: t, players: map[t.id] }));
+  }
+
+  /* Scramble team handicap for a side (uses 35%/15% for a pair). */
+  function scrambleHC(side, r, g) {
+    const chs = side.players.map((p) => chFor(p, r, g));
+    if (chs.length === 0) return 0;
+    if (chs.length === 1) return chs[0];
+    return Golf.scrambleHandicap(chs[0], chs[1]);
+  }
+
+  /* Resolve the match in a group for its round's format. Returns null if the
+   * group isn't a valid 2-side match. { sides:[{team,ch}], m } */
+  function matchForGroup(r, g, c) {
+    const sides = sidesForGroup(g);
+    if (sides.length !== 2) return null;
+    const [A, B] = sides;
+    let netsA, netsB, chA, chB;
+    if (r.format === 'scramble') {
+      chA = scrambleHC(A, r, g);
+      chB = scrambleHC(B, r, g);
+      netsA = Golf.scrambleNets(chA, c.holes, (h) => getTeamScore(r, g.id, A.team.id, h));
+      netsB = Golf.scrambleNets(chB, c.holes, (h) => getTeamScore(r, g.id, B.team.id, h));
+    } else {
+      const pa = A.players.map((p) => ({ id: p.id, courseHandicap: chFor(p, r, g) }));
+      const pb = B.players.map((p) => ({ id: p.id, courseHandicap: chFor(p, r, g) }));
+      netsA = Golf.bestBallNets(pa, c.holes, (pid, h) => getScore(r, pid, h));
+      netsB = Golf.bestBallNets(pb, c.holes, (pid, h) => getScore(r, pid, h));
+    }
+    const m = Golf.matchFromNets(netsA, netsB, c.holes.length);
+    return { sides: [{ team: A.team, ch: chA }, { team: B.team, ch: chB }], A, B, m };
   }
 
   /* =======================================================================
@@ -148,6 +196,13 @@
         html += '<div class="empty">No players assigned. Add groups in <b>Rounds</b>.</div></div>';
         return;
       }
+
+      // ---- match-play rounds: show match results ----
+      if (isMatch(r.format)) {
+        html += (c ? renderMatchList(r, c) : '<div class="empty">Set a course for this round.</div>') + '</div>';
+        return;
+      }
+
       const gross = (r.format === 'stroke_gross');
       const rows = players.map((p) => {
         const ch = chFor(p, r);
@@ -189,30 +244,55 @@
 
   function fmtPts(n) { n = n || 0; return (Math.round(n * 2) / 2).toString(); }
 
-  /* Team points: every group with exactly 2 players on opposite teams is a
-   * singles match. Winner's team +1, tie +0.5 each. Summed across rounds. */
+  /* Team points: each match-format group is a 2-side match. Winner +1, halve
+   * +0.5 each, only once decided. Summed across all match rounds. */
   function teamPoints() {
     const pts = {};
     S().teams.forEach((t) => (pts[t.id] = 0));
     S().rounds.forEach((r) => {
+      if (!isMatch(r.format)) return;
       const c = course(r.courseId);
       if (!c) return;
       (r.groups || []).forEach((g) => {
-        const ps = (g.playerIds || []).map(player).filter(Boolean);
-        if (ps.length !== 2) return;
-        const [pa, pb] = ps;
-        if (!pa.teamId || !pb.teamId || pa.teamId === pb.teamId) return;
-        const a = { id: pa.id, courseHandicap: chFor(pa, r, g) };
-        const b = { id: pb.id, courseHandicap: chFor(pb, r, g) };
-        const m = Golf.singlesMatch(a, b, c.holes, (pid, h) => getScore(r, pid, h));
-        if (m.holesPlayed === 0) return;
-        if (m.result === 'A') pts[pa.teamId] += 1;
-        else if (m.result === 'B') pts[pb.teamId] += 1;
-        else if (m.result === 'AS') { pts[pa.teamId] += 0.5; pts[pb.teamId] += 0.5; }
-        // in-progress matches don't award until complete
+        const mg = matchForGroup(r, g, c);
+        if (!mg || mg.m.played === 0) return;
+        const [sa, sb] = mg.sides;
+        if (mg.m.result === 'A') pts[sa.team.id] += 1;
+        else if (mg.m.result === 'B') pts[sb.team.id] += 1;
+        else if (mg.m.result === 'AS') { pts[sa.team.id] += 0.5; pts[sb.team.id] += 0.5; }
+        // in-progress matches don't award until decided
       });
     });
     return pts;
+  }
+
+  /* Match results table for a match-play round. */
+  function renderMatchList(r, c) {
+    const groups = r.groups || [];
+    if (!groups.length) return '<div class="empty">No matches set up. Add groups in <b>Rounds</b>.</div>';
+    let html = '<table><thead><tr><th>Match</th><th>Sides</th><th class="num">Status</th><th class="num">Pt</th></tr></thead><tbody>';
+    groups.forEach((g) => {
+      const mg = matchForGroup(r, g, c);
+      if (!mg) {
+        html += '<tr><td>' + esc(g.name) + '</td><td colspan="3" class="muted">needs 2 teams</td></tr>';
+        return;
+      }
+      const [sa, sb] = mg.sides;
+      const ta = team(sa.team.id), tb = team(sb.team.id);
+      const dot = (t) => t ? '<span class="team-dot" style="background:' + (t.color || '#888') + '"></span>' : '';
+      const sideName = (side, t) => dot(t) + ' ' + side.players.map((p) => esc(p.name)).join(' / ');
+      const statusText = Golf.matchText(mg.m, ta ? ta.name : 'A', tb ? tb.name : 'B');
+      let pt = '';
+      if (mg.m.result === 'A') pt = '1–0';
+      else if (mg.m.result === 'B') pt = '0–1';
+      else if (mg.m.result === 'AS') pt = '½–½';
+      const lead = mg.m.status > 0 ? 'under' : mg.m.status < 0 ? '' : 'even';
+      html += '<tr><td><b>' + esc(g.name) + '</b></td>' +
+        '<td style="font-size:13px">' + sideName(mg.A, ta) + ' <span class="muted">vs</span> ' + sideName(mg.B, tb) + '</td>' +
+        '<td class="num">' + esc(statusText) + '</td><td class="num">' + pt + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    return html;
   }
 
   /* =======================================================================
@@ -252,24 +332,58 @@
     c.holes.forEach((h) => (html += '<td class="par-cell">' + h.si + '</td>'));
     html += '<td></td></tr></thead><tbody>';
 
-    players.forEach((p) => {
-      const ch = chFor(p, r, grp);
-      let tot = 0, any = false;
-      html += '<tr><td><b>' + esc(p.name) + '</b><div class="par-cell">CH ' + ch + '</div></td>';
-      c.holes.forEach((h, i) => {
-        const g = getScore(r, p.id, i);
-        const strokes = Golf.strokesOnHole(ch, h.si, c.holes.length);
-        if (g != null && g !== '' && !isNaN(g)) { tot += Number(g); any = true; }
-        html += '<td><input class="score-input" type="number" inputmode="numeric" min="1" max="20" ' +
-          'value="' + (g == null ? '' : g) + '" data-action="score" data-rid="' + r.id +
-          '" data-pid="' + p.id + '" data-h="' + i + '">' +
-          (strokes > 0 ? '<div class="par-cell stroke-dot">' + '•'.repeat(strokes) + '</div>' : '') +
-          '</td>';
+    if (r.format === 'scramble') {
+      // one team score per hole (Texas scramble)
+      const sides = sidesForGroup(grp);
+      sides.forEach((side) => {
+        const ch = scrambleHC(side, r, grp);
+        const t = side.team;
+        let tot = 0, any = false;
+        html += '<tr><td><b>' + (t ? '<span class="team-dot" style="background:' + (t.color || '#888') + '"></span> ' : '') +
+          esc(t ? t.name : 'Team') + '</b><div class="par-cell">' + side.players.map((p) => esc(p.name)).join(' / ') + ' · CH ' + ch + '</div></td>';
+        c.holes.forEach((h, i) => {
+          const g = getTeamScore(r, grp.id, t.id, i);
+          const strokes = Golf.strokesOnHole(ch, h.si, c.holes.length);
+          if (g != null && g !== '' && !isNaN(g)) { tot += Number(g); any = true; }
+          html += '<td><input class="score-input" type="number" inputmode="numeric" min="1" max="20" ' +
+            'value="' + (g == null ? '' : g) + '" data-action="team-score" data-rid="' + r.id +
+            '" data-gid="' + grp.id + '" data-tid="' + t.id + '" data-h="' + i + '">' +
+            (strokes > 0 ? '<div class="par-cell stroke-dot">' + '•'.repeat(strokes) + '</div>' : '') +
+            '</td>';
+        });
+        html += '<td class="num"><b>' + (any ? tot : '') + '</b></td></tr>';
       });
-      html += '<td class="num"><b>' + (any ? tot : '') + '</b></td></tr>';
-    });
+    } else {
+      players.forEach((p) => {
+        const ch = chFor(p, r, grp);
+        let tot = 0, any = false;
+        html += '<tr><td><b>' + esc(p.name) + '</b><div class="par-cell">CH ' + ch + '</div></td>';
+        c.holes.forEach((h, i) => {
+          const g = getScore(r, p.id, i);
+          const strokes = Golf.strokesOnHole(ch, h.si, c.holes.length);
+          if (g != null && g !== '' && !isNaN(g)) { tot += Number(g); any = true; }
+          html += '<td><input class="score-input" type="number" inputmode="numeric" min="1" max="20" ' +
+            'value="' + (g == null ? '' : g) + '" data-action="score" data-rid="' + r.id +
+            '" data-pid="' + p.id + '" data-h="' + i + '">' +
+            (strokes > 0 ? '<div class="par-cell stroke-dot">' + '•'.repeat(strokes) + '</div>' : '') +
+            '</td>';
+        });
+        html += '<td class="num"><b>' + (any ? tot : '') + '</b></td></tr>';
+      });
+    }
     html += '</tbody></table>';
-    html += '<div class="muted" style="margin-top:10px;font-size:12px">Red dots = handicap strokes received on that hole. Scores save automatically &amp; sync live.</div></div>';
+    // live match status under the grid for match formats
+    if (isMatch(r.format)) {
+      const mg = matchForGroup(r, grp, c);
+      if (mg) {
+        const ta = team(mg.sides[0].team.id), tb = team(mg.sides[1].team.id);
+        html += '<div class="banner-tip" style="background:#eef7f1;border-color:#bfe3cd;color:#0b6b3a;margin-top:12px">' +
+          '<b>' + esc(Golf.matchText(mg.m, ta ? ta.name : 'A', tb ? tb.name : 'B')) + '</b></div>';
+      }
+    }
+    html += '<div class="muted" style="margin-top:10px;font-size:12px">Red dots = handicap strokes received on that hole. ' +
+      (r.format === 'fourball' ? 'Best (lowest) net per team counts each hole. ' : r.format === 'scramble' ? 'Enter one team score per hole. ' : '') +
+      'Scores save automatically &amp; sync live.</div></div>';
     return html;
   }
 
@@ -297,6 +411,10 @@
       const skins = r.skins || {};
       const c = course(r.courseId);
       html += '<div class="card"><h2>' + esc(r.name) + ' — Skins</h2>';
+      if (r.format === 'scramble') {
+        html += '<div class="muted">Skins don\'t apply to a scramble (one team ball per hole).</div></div>';
+        return;
+      }
       html += '<div class="row">' +
         '<div><label>Skins on?</label><select data-action="skin-cfg" data-rid="' + r.id + '" data-f="enabled" class="compact">' +
         '<option value="1"' + (skins.enabled ? ' selected' : '') + '>Yes</option>' +
@@ -472,7 +590,7 @@
         html += '</div>';
       });
       html += '<div class="btn-row"><button class="btn small secondary" data-action="add-group" data-rid="' + r.id + '">+ Add group</button>' +
-        '<button class="btn small secondary" data-action="auto-pair" data-rid="' + r.id + '">Auto-pair teams (singles)</button></div>';
+        '<button class="btn small secondary" data-action="auto-pair" data-rid="' + r.id + '">Auto-pair teams</button></div>';
       html += '</div>';
     });
     return html;
@@ -509,18 +627,26 @@
     if (!(r.groups || []).length) return html + '<div class="card"><div class="empty">No groups to print.</div></div>';
 
     r.groups.forEach((g) => {
-      const players = (g.playerIds || []).map((pid) => {
-        const p = player(pid);
-        if (!p) return null;
-        const ch = chFor(p, r, g);
-        return { name: p.name, courseHandicap: ch, getScore: (h) => getScore(r, pid, h) };
-      }).filter(Boolean);
-      if (!players.length) return;
+      let rows;
+      if (r.format === 'scramble') {
+        rows = sidesForGroup(g).map((side) => ({
+          name: (side.team ? side.team.name : 'Team') + ' (' + side.players.map((p) => p.name).join('/') + ')',
+          courseHandicap: scrambleHC(side, r, g),
+          getScore: (h) => getTeamScore(r, g.id, side.team.id, h),
+        }));
+      } else {
+        rows = (g.playerIds || []).map((pid) => {
+          const p = player(pid);
+          if (!p) return null;
+          return { name: p.name, courseHandicap: chFor(p, r, g), getScore: (h) => getScore(r, pid, h) };
+        }).filter(Boolean);
+      }
+      if (!rows.length) return;
       html += Print.scorecardHTML({
         title: g.name + ' — ' + r.name,
         subtitle: (c.name || '') + (r.date ? ' · ' + r.date : '') + ' · ' + fmtName(r.format),
         holes: c.holes,
-        players: players,
+        players: rows,
       });
     });
     return html;
@@ -699,6 +825,18 @@
       });
       return;
     }
+    if (a === 'team-score') {
+      Store.update((s) => {
+        const r = byId(s.rounds, t.dataset.rid);
+        if (!r) return;
+        r.teamScores = r.teamScores || {};
+        r.teamScores[t.dataset.gid] = r.teamScores[t.dataset.gid] || {};
+        r.teamScores[t.dataset.gid][t.dataset.tid] = r.teamScores[t.dataset.gid][t.dataset.tid] || {};
+        if (val === '' || val == null) delete r.teamScores[t.dataset.gid][t.dataset.tid][t.dataset.h];
+        else r.teamScores[t.dataset.gid][t.dataset.tid][t.dataset.h] = parseInt(val, 10);
+      });
+      return;
+    }
     if (a === 'pick-round') { ui.roundId = val; ui.groupId = null; render(); return; }
     if (a === 'pick-group') { ui.groupId = val; render(); return; }
     if (a === 'trip-name') { Store.update((s) => (s.meta.name = val)); return; }
@@ -759,12 +897,15 @@
       if (teams.length < 2) { alert('Need at least 2 teams to auto-pair.'); return; }
       const a = s.players.filter((p) => p.teamId === teams[0].id);
       const b = s.players.filter((p) => p.teamId === teams[1].id);
+      const perSide = (r.format === 'fourball' || r.format === 'scramble') ? 2 : 1; // 2v2 vs 1v1
       r.groups = [];
-      const n = Math.max(a.length, b.length);
+      const n = Math.max(Math.ceil(a.length / perSide), Math.ceil(b.length / perSide));
       for (let i = 0; i < n; i++) {
         const ids = [];
-        if (a[i]) ids.push(a[i].id);
-        if (b[i]) ids.push(b[i].id);
+        for (let k = 0; k < perSide; k++) {
+          if (a[i * perSide + k]) ids.push(a[i * perSide + k].id);
+          if (b[i * perSide + k]) ids.push(b[i * perSide + k].id);
+        }
         r.groups.push({ id: Store.uid('g'), name: 'Match ' + (i + 1), playerIds: ids, teeOverrides: {} });
       }
     });
@@ -795,35 +936,46 @@
    * SAMPLE DATA
    * ===================================================================== */
   function seedSample() {
-    if (S().players.length && !confirm('Replace current data with sample trip?')) return;
+    if (S().players.length && !confirm('Replace current data with the trip template?')) return;
+    // Standard par-72 hole template — UPDATE par/stroke-index per course on the Setup tab.
     const holePar = [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 4, 5];
     const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
-    const holes = holePar.map((par, i) => ({ par, si: holeSI[i] }));
-    const teeWhite = Store.uid('tee'), teeBlue = Store.uid('tee');
-    const cId = Store.uid('c');
+    const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
+
+    // three courses, one White tee each (placeholder slope/rating — edit in Setup)
+    function mkCourse(name, rating, slope) {
+      const teeId = Store.uid('tee');
+      return { course: { id: Store.uid('c'), name, tees: [{ id: teeId, name: 'White', rating, slope }], holes: holes() }, teeId };
+    }
+    const legacy = mkCourse('Legacy Golf Links', 71.5, 130);
+    const midsouth = mkCourse('Mid South Club', 72.0, 133);
+    const talamore = mkCourse('Talamore Golf Resort', 71.0, 132);
+
     const teamA = Store.uid('team'), teamB = Store.uid('team');
-    const mk = (name, index, teamId) => ({ id: Store.uid('p'), name, index, teamId, defaultTeeId: teeWhite });
-    const players = [
-      mk('Tiger', 2.1, teamA), mk('Phil', 6.4, teamA), mk('Rory', 4.0, teamA), mk('Jordan', 9.8, teamA),
-      mk('Brooks', 3.2, teamB), mk('DJ', 5.1, teamB), mk('Bryson', 8.3, teamB), mk('Rickie', 12.6, teamB),
+    const mk = (name, index, teamId) => ({ id: Store.uid('p'), name, index, teamId, defaultTeeId: legacy.teeId });
+    const red = [mk('Player 1', 8, teamA), mk('Player 2', 12, teamA), mk('Player 3', 5, teamA), mk('Player 4', 16, teamA)];
+    const blue = [mk('Player 5', 9, teamB), mk('Player 6', 14, teamB), mk('Player 7', 7, teamB), mk('Player 8', 20, teamB)];
+    const players = red.concat(blue);
+
+    // Round 1: 1v1 singles — 4 matches
+    const singlesGroups = red.map((p, i) => ({ id: Store.uid('g'), name: 'Match ' + (i + 1), playerIds: [p.id, blue[i].id], teeOverrides: {} }));
+    // Rounds 2 & 3: 2v2 — 2 matches each (pairs of teammates)
+    const pairGroups = () => [
+      { id: Store.uid('g'), name: 'Match 1', playerIds: [red[0].id, red[1].id, blue[0].id, blue[1].id], teeOverrides: {} },
+      { id: Store.uid('g'), name: 'Match 2', playerIds: [red[2].id, red[3].id, blue[2].id, blue[3].id], teeOverrides: {} },
     ];
-    const groups = [];
-    for (let i = 0; i < 4; i++) groups.push({ id: Store.uid('g'), name: 'Match ' + (i + 1), playerIds: [players[i].id, players[i + 4].id], teeOverrides: {} });
+    const skins = (buyIn) => ({ enabled: true, mode: 'net', carryover: true, buyIn });
 
     Store.importJSON(JSON.stringify({
       meta: { name: 'Guys Golf Trip 2026' },
       teams: [{ id: teamA, name: 'Red', color: '#c0392b' }, { id: teamB, name: 'Blue', color: '#2563eb' }],
       players,
-      courses: [{
-        id: cId, name: 'Pebble Dunes GC',
-        tees: [{ id: teeWhite, name: 'White', rating: 70.4, slope: 124 }, { id: teeBlue, name: 'Blue', rating: 72.1, slope: 131 }],
-        holes,
-      }],
-      rounds: [{
-        id: Store.uid('r'), name: 'Day 1 — Singles', courseId: cId, format: 'match_singles', date: '',
-        skins: { enabled: true, mode: 'net', carryover: true, buyIn: 20 },
-        groups, scores: {},
-      }],
+      courses: [legacy.course, midsouth.course, talamore.course],
+      rounds: [
+        { id: Store.uid('r'), name: 'Round 1 — Legacy (Singles)', courseId: legacy.course.id, format: 'match_singles', date: '', skins: skins(20), groups: singlesGroups, scores: {} },
+        { id: Store.uid('r'), name: 'Round 2 — Mid South (Best Ball)', courseId: midsouth.course.id, format: 'fourball', date: '', skins: skins(20), groups: pairGroups(), scores: {} },
+        { id: Store.uid('r'), name: 'Round 3 — Talamore (Scramble)', courseId: talamore.course.id, format: 'scramble', date: '', skins: { enabled: false, mode: 'net', carryover: true, buyIn: 0 }, groups: pairGroups(), scores: {}, teamScores: {} },
+      ],
       payouts: [{ id: Store.uid('po'), name: 'Overall Net', type: 'overall_net', buyIn: 20, places: '50,30,20', roundId: '' }],
     }));
     ui.tab = 'leaderboard';
