@@ -11,20 +11,52 @@ export function sampleTournament() {
   const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
   const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
 
-  const course = (id, name, tees) => ({ id, name, tees, holes: holes() });
-  // Each course has its own tees (placeholder rating/slope — edit in Setup).
-  const legacy = course('legacy', 'Legacy Golf Links', {
-    'legacy-blue': { name: 'Blue', rating: 71.5, slope: 130 },
-    'legacy-white': { name: 'White', rating: 69.6, slope: 124 },
-  });
-  const midsouth = course('midsouth', 'Mid South Club', {
-    'mid-blue': { name: 'Blue', rating: 72.0, slope: 133 },
-    'mid-white': { name: 'White', rating: 70.1, slope: 126 },
-  });
-  const talamore = course('talamore', 'Talamore Golf Resort', {
-    'tal-blue': { name: 'Blue', rating: 71.0, slope: 132 },
-    'tal-white': { name: 'White', rating: 69.2, slope: 125 },
-  });
+  // Researched from public databases (18Birdies / GolfLink / BlueGolf summaries).
+  // Tee ratings/slopes: medium-high confidence. Verify against each course's
+  // printed scorecard before the trip — especially Legacy's per-hole par/SI,
+  // which could not be sourced and is still the par-4/SI-1..18 placeholder.
+  const mkHoles = (arr) => arr.map(([par, si]) => ({ par, si }));
+
+  // Legacy Golf Links — Aberdeen, NC — par 72. Tees solid; HOLE par/SI NOT sourced (placeholder).
+  const legacy = {
+    id: 'legacy', name: 'Legacy Golf Links',
+    tees: {
+      'legacy-gold': { name: 'Gold', rating: 74.4, slope: 139 },
+      'legacy-blue': { name: 'Blue', rating: 72.2, slope: 134 },
+      'legacy-white': { name: 'White', rating: 69.6, slope: 130 },
+      'legacy-green': { name: 'Green', rating: 66.5, slope: 117 },
+      'legacy-red': { name: 'Red', rating: 63.9, slope: 113 },
+    },
+    holes: holes(), // PLACEHOLDER — enter real par + stroke index from the scorecard
+  };
+
+  // Mid South Club — Southern Pines, NC — par 71 (front 36 / back 35).
+  const midsouth = {
+    id: 'midsouth', name: 'Mid South Club',
+    tees: {
+      'mid-gold': { name: 'Gold', rating: 73.8, slope: 146 },
+      'mid-blue': { name: 'Blue', rating: 72.1, slope: 139 },
+      'mid-white': { name: 'White', rating: 70.0, slope: 132 },
+      'mid-green': { name: 'Green', rating: 67.8, slope: 122 },
+      'mid-red': { name: 'Red', rating: 63.9, slope: 113 },
+    },
+    holes: mkHoles([[4, 11], [4, 3], [3, 17], [5, 9], [4, 1], [3, 15], [4, 13], [4, 7], [5, 5],
+      [4, 12], [3, 18], [4, 2], [4, 10], [4, 4], [5, 14], [4, 8], [3, 16], [4, 6]]),
+  };
+
+  // Talamore (Resort course) — Southern Pines, NC — par 71 (front 36 / back 35).
+  const talamore = {
+    id: 'talamore', name: 'Talamore Golf Resort',
+    tees: {
+      'tal-gold': { name: 'Gold', rating: 71.4, slope: 140 },
+      'tal-blue': { name: 'Blue', rating: 68.7, slope: 136 },
+      'tal-white': { name: 'White', rating: 66.0, slope: 132 },
+      'tal-green': { name: 'Green', rating: 63.1, slope: 125 },
+      'tal-red': { name: 'Red', rating: 63.1, slope: 106 },
+    },
+    holes: mkHoles([[5, 4], [3, 16], [4, 6], [5, 14], [3, 18], [4, 12], [4, 2], [4, 8], [4, 10],
+      [4, 7], [5, 15], [4, 5], [3, 17], [4, 9], [3, 13], [4, 1], [4, 11], [4, 3]]),
+  };
 
   const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '' }];
   const red = [['p1', 8], ['p2', 12], ['p3', 5], ['p4', 16], ['p5', 10], ['p6', 3]];
