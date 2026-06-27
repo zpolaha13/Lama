@@ -16,11 +16,17 @@
  * ========================================================================= */
 
 export const firebaseConfig = {
-  apiKey: 'REPLACE_ME',
-  authDomain: 'REPLACE_ME',
-  databaseURL: 'REPLACE_ME', // e.g. https://your-project-default-rtdb.firebaseio.com
-  projectId: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
+  apiKey: 'AIzaSyDFtQFRlDgWxmHcMzepngW6iPbYXrlpwKA',
+  authDomain: 'lama-df58d.firebaseapp.com',
+  // Standard US default URL for this project. If your Realtime Database is in a
+  // different region, it will look like:
+  //   https://lama-df58d-default-rtdb.<region>.firebasedatabase.app
+  // Confirm the exact URL on the Realtime Database page and update if needed.
+  databaseURL: 'https://lama-df58d-default-rtdb.firebaseio.com',
+  projectId: 'lama-df58d',
+  storageBucket: 'lama-df58d.firebasestorage.app',
+  messagingSenderId: '183025731838',
+  appId: '1:183025731838:web:a11cdb3fc80ed6a8befdaf',
 };
 
 // Shared trip id — everyone on the same id shares the same live data.
