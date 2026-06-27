@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#0b6b3a" />
+  <title>Golf Trip Live Scoring</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">⛳</span>
+      <div>
+        <h1 id="tripName">Golf Trip</h1>
+        <span id="syncStatus" class="sync sync-local">● Local</span>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="leaderboard" class="active">Leaderboard</button>
+      <button data-tab="score">Score</button>
+      <button data-tab="skins">Skins</button>
+      <button data-tab="payouts">Payouts</button>
+      <button data-tab="rounds">Rounds</button>
+      <button data-tab="cards">Scorecards</button>
+      <button data-tab="setup">Setup</button>
+    </nav>
+  </header>
+
+  <main id="view"><!-- rendered by ui.js --></main>
+
+  <footer class="app-footer">
+    <span id="footerInfo"></span>
+  </footer>
+
+  <!-- Firebase (compat SDK, only used if config.js is filled in) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <!-- App -->
+  <script src="js/config.js"></script>
+  <script src="js/golf.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/print.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

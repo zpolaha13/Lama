@@ -1,0 +1,170 @@
+/* =========================================================================
+ * styles.css — Golf Trip Live Scoring
+ * ========================================================================= */
+:root {
+  --green: #0b6b3a;
+  --green-dark: #074d29;
+  --green-light: #14a35a;
+  --bg: #f4f6f5;
+  --card: #ffffff;
+  --ink: #14201a;
+  --muted: #6b7a72;
+  --line: #e2e8e4;
+  --red: #c0392b;
+  --blue: #2563eb;
+  --gold: #d4a017;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- header ---------- */
+.app-header {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--green);
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 6px;
+}
+.brand .logo { font-size: 26px; }
+.brand h1 { font-size: 18px; margin: 0; line-height: 1.1; }
+.sync { font-size: 11px; opacity: 0.9; }
+.sync-live { color: #aef5c9; }
+.sync-local { color: #ffe08a; }
+
+.tabs {
+  display: flex; gap: 2px; overflow-x: auto;
+  padding: 0 8px 6px; -webkit-overflow-scrolling: touch;
+}
+.tabs button {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eafaf0; border: none;
+  padding: 8px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.tabs button.active { background: #fff; color: var(--green-dark); }
+
+/* ---------- layout ---------- */
+main { padding: 14px; max-width: 1100px; margin: 0 auto; }
+.app-footer {
+  text-align: center; color: var(--muted);
+  font-size: 11px; padding: 18px 10px 30px;
+}
+
+.card {
+  background: var(--card); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 16px;
+  margin-bottom: 14px; border: 1px solid var(--line);
+}
+.card h2 { margin: 0 0 12px; font-size: 16px; }
+.card h3 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.row > div { flex: 1 1 140px; }
+.muted { color: var(--muted); }
+.right { text-align: right; }
+.center { text-align: center; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
+
+/* ---------- forms ---------- */
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+input, select, textarea {
+  width: 100%; padding: 9px 10px; border: 1px solid var(--line);
+  border-radius: 9px; font-size: 14px; background: #fff; color: var(--ink);
+  font-family: inherit;
+}
+input:focus, select:focus { outline: 2px solid var(--green-light); border-color: var(--green-light); }
+button.btn {
+  background: var(--green); color: #fff; border: none;
+  padding: 10px 16px; border-radius: 9px; font-weight: 700;
+  cursor: pointer; font-size: 14px;
+}
+button.btn:hover { background: var(--green-dark); }
+button.btn.secondary { background: #eef2ef; color: var(--ink); border: 1px solid var(--line); }
+button.btn.danger { background: var(--red); }
+button.btn.small { padding: 6px 10px; font-size: 12px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.inline-actions { display: flex; gap: 6px; }
+
+/* ---------- tables ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+td.num, th.num { text-align: center; }
+tr.team-row td { font-weight: 700; }
+.lead-table td.pos { color: var(--muted); width: 26px; }
+.under { color: var(--red); font-weight: 700; }
+.over { color: var(--ink); }
+.even { color: var(--muted); }
+
+.team-score-banner {
+  display: flex; align-items: stretch; border-radius: 14px; overflow: hidden;
+  box-shadow: var(--shadow); margin-bottom: 14px; font-weight: 800;
+}
+.team-score-banner .side { flex: 1; padding: 16px; color: #fff; text-align: center; }
+.team-score-banner .pts { font-size: 32px; line-height: 1; }
+.team-score-banner .nm { font-size: 13px; opacity: 0.95; }
+.team-score-banner .vs { display: flex; align-items: center; padding: 0 14px; background: #fff; color: var(--muted); font-weight: 800; }
+
+/* ---------- score entry ---------- */
+.score-grid { overflow-x: auto; }
+.score-grid table { min-width: 640px; }
+.hole-head { background: #f8faf9; }
+.score-input { width: 42px; text-align: center; padding: 6px 2px; }
+.stroke-dot { color: var(--red); font-weight: 800; letter-spacing: -1px; }
+.par-cell { font-size: 11px; color: var(--muted); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #eef2ef; border-radius: 999px; padding: 4px 10px;
+  font-size: 12px; margin: 2px; border: 1px solid var(--line);
+}
+.chip .x { cursor: pointer; color: var(--red); font-weight: 800; }
+
+.empty {
+  text-align: center; color: var(--muted); padding: 30px 10px;
+}
+.banner-tip {
+  background: #fff8e1; border: 1px solid #ffe08a; color: #7a5d00;
+  padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 14px;
+}
+.list-item {
+  display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px;
+}
+.list-item .meta { font-size: 12px; color: var(--muted); }
+.team-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+select.compact, input.compact { padding: 6px 8px; font-size: 13px; }
+
+/* ---------- print scorecards ---------- */
+@media print {
+  .app-header, .app-footer, .no-print { display: none !important; }
+  body { background: #fff; }
+  main { padding: 0; max-width: none; }
+  .card { box-shadow: none; border: none; page-break-inside: avoid; margin: 0 0 18px; }
+  .scorecard { page-break-after: always; }
+}
+.scorecard {
+  border: 2px solid var(--ink); border-radius: 10px; padding: 14px; margin-bottom: 18px;
+  background: #fff;
+}
+.scorecard h3 { color: var(--ink); margin: 0 0 4px; font-size: 16px; text-transform: none; letter-spacing: 0; }
+.scorecard .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.scorecard table { font-size: 12px; }
+.scorecard th, .scorecard td { border: 1px solid #cdd6d0; text-align: center; padding: 5px 4px; }
+.scorecard td.name { text-align: left; font-weight: 700; white-space: nowrap; }
+.scorecard .si-row td, .scorecard .par-row td { background: #f1f5f2; font-size: 11px; color: var(--muted); }
+.dot { display: inline-block; }
