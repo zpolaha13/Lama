@@ -18,6 +18,7 @@ let activeId = DEFAULT_TRIP_ID;
 let fbDb = null;       // firebase database handle (for creating refs)
 let indexRef = null;   // shared registry of tournaments
 let index = {};        // { tripId: { name, created } }
+let creating = false;  // true while we're intentionally seeding a new trip node
 
 export function emptyState() {
   return {
@@ -123,11 +124,16 @@ function slug(s) { return String(s || 'trip').toLowerCase().replace(/[^a-z0-9]+/
 function loadLocalIndex() { try { index = JSON.parse(localStorage.getItem('golftrip-v2-index') || '{}') || {}; } catch (e) { index = {}; } }
 function saveLocalIndex() { try { localStorage.setItem('golftrip-v2-index', JSON.stringify(index)); } catch (e) {} }
 function registerInIndex(id, name) {
-  const entry = index[id] || { created: nowStamp() };
+  const prev = index[id];
+  const prevName = prev && prev.name;
+  const entry = prev || { created: nowStamp() };
   if (name) entry.name = name;
   index[id] = entry;
   saveLocalIndex();
-  if (indexRef) { const patch = {}; patch[id] = entry; indexRef.update(patch).catch(() => {}); }
+  // only push to the shared registry when it's genuinely new or renamed —
+  // otherwise every score sync would rewrite the index and ripple to all devices
+  const changed = !prev || (name && name !== prevName);
+  if (changed && indexRef) { const patch = {}; patch[id] = entry; indexRef.update(patch).catch(() => {}); }
 }
 
 export function listTournaments() {
@@ -138,17 +144,37 @@ export function listTournaments() {
 
 function onRemote(snap) {
   const remote = snap.val();
-  if (!remote) { if (fbRef) fbRef.set(state).catch(() => {}); return; } // seed empty trip with local
+  if (!remote) {
+    // The trip node is empty. Two cases:
+    //  - we're mid-create and our own set() hasn't landed yet -> wait for it.
+    //  - it was DELETED (here or on another device) -> do NOT re-seed it
+    //    (that's what resurrected "Golf Trip"). Forget it locally and move to
+    //    another tournament so a later local write can't recreate it.
+    if (creating) return;
+    if (index[activeId]) { delete index[activeId]; saveLocalIndex(); if (indexRef) indexRef.child(activeId).remove().catch(() => {}); }
+    try { localStorage.removeItem('golftrip-v2:' + activeId); } catch (e) {}
+    const other = listTournaments().find((t) => t.id !== activeId);
+    if (other) { openTournament(other.id); return; }
+    state = emptyState(); persistLocal(); notify(); // nothing left: clean empty, don't rewrite remote
+    return;
+  }
+  creating = false; // real data exists now
   const next = normalize(Object.assign(emptyState(), remote));
+  // this trip is real and current — keep the registry in step (also adds trips
+  // opened via a shared link to your list)
+  registerInIndex(activeId, next.tournament && next.tournament.name);
   if (JSON.stringify(next) === JSON.stringify(state)) return; // our own echo
   state = next;
   persistLocal();
   notify();
 }
 
-/* Open a tournament by id: detach old listener, load its data, attach new. */
-function openTournament(id) {
+/* Open a tournament by id: detach old listener, load its data, attach new.
+ * opts.fresh marks an intentional brand-new trip so onRemote's empty-node
+ * handler waits for our seed instead of treating it as deleted. */
+function openTournament(id, opts) {
   if (fbRef) { try { fbRef.off(); } catch (e) {} fbRef = null; }
+  creating = !!(opts && opts.fresh);
   activeId = id;
   LS_KEY = 'golftrip-v2:' + id;
   state = emptyState();
@@ -157,8 +183,11 @@ function openTournament(id) {
   if (fbDb) {
     fbRef = fbDb.ref('trips/' + id);
     fbRef.on('value', onRemote);
+    // online: registration is confirmed by onRemote once real data exists, so a
+    // deleted/empty node never re-adds itself to the shared registry on open.
+  } else {
+    registerInIndex(id, state.tournament && state.tournament.name); // local-only list
   }
-  registerInIndex(id, state.tournament && state.tournament.name);
   notify();
 }
 
@@ -174,7 +203,7 @@ export function createTournament(opts) {
     init.tournament = init.tournament || {};
     init.tournament.name = name;
     init.tournament.id = id;
-    openTournament(id);
+    openTournament(id, { fresh: true });
     replaceAll(init);
     registerInIndex(id, name);
     return id;
@@ -190,7 +219,7 @@ export function createTournament(opts) {
   init.tournament.name = name;
   init.tournament.id = id;
   init.tournament.joinCode = '';
-  openTournament(id);   // switch to the (empty) new node
+  openTournament(id, { fresh: true });   // switch to the (empty) new node
   replaceAll(init);     // write the initial state (local + firebase set)
   registerInIndex(id, name);
   return id;
@@ -222,7 +251,17 @@ export function init() {
       fbDb = fb.database();
       online = true;
       indexRef = fbDb.ref('tripsIndex');
-      indexRef.on('value', (snap) => { const v = snap.val() || {}; index = Object.assign({}, index, v); saveLocalIndex(); notify(); });
+      indexRef.on('value', (snap) => {
+        // Remote registry is authoritative: REPLACE (don't merge) so a delete on
+        // any device removes the entry everywhere. Keep only the trip you're
+        // actively viewing, which you know exists.
+        const v = snap.val() || {};
+        const keepActive = index[activeId];
+        index = Object.assign({}, v);
+        if (keepActive && !index[activeId]) index[activeId] = keepActive;
+        saveLocalIndex();
+        notify();
+      });
     } catch (e) {
       console.warn('Firebase init failed; staying local-only.', e);
       online = false;
