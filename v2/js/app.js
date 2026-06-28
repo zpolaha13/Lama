@@ -827,19 +827,23 @@ function printScorecards(rids) {
 function printCard(r, c, pairing, idx) {
   const st = S();
   const holes = c.holes;
-  let units;
+  // Group into sides so we can add a per-team "net" row and a "hole won" row.
+  const isTeam = fmtInfo(r.format).perSide === 2;
+  let sides;
   if (r.format === 'scramble') {
     const res = resolvePairingMatch(st, r, pairing);
-    units = ['A', 'B'].map((side) => {
+    sides = ['A', 'B'].map((side) => {
       const ids = side === 'A' ? pairing.teamA : pairing.teamB;
       const sid = side === 'A' ? res.squadA : res.squadB; const ch = side === 'A' ? res.chA : res.chB;
-      return { name: squad(sid) ? squad(sid).name : side, sub: ids.map((x) => player(x) ? player(x).name : '?').join(' / ') + ' · CH ' + ch, color: squad(sid) ? squad(sid).color : '#888', ch };
+      const sq = squad(sid); const nm = sq ? sq.name : side; const color = sq ? sq.color : '#888';
+      return { name: nm, color, players: [{ name: nm, sub: ids.map((x) => player(x) ? player(x).name : '?').join(' / ') + ' · CH ' + ch, color, ch }] };
     });
   } else {
     const hc = matchHandicaps(st, r, pairing);
-    units = [...(pairing.teamA || []), ...(pairing.teamB || [])].map((pid) => {
-      const p = player(pid); const ch = hc.byPlayer[pid] || 0;
-      return { name: p ? p.name : '?', sub: teeNameFor(p, r) + ' tee · CH ' + ch, color: p && squad(p.squadId) ? squad(p.squadId).color : '#888', ch };
+    const mkUnit = (pid) => { const p = player(pid); const ch = hc.byPlayer[pid] || 0; return { name: p ? p.name : '?', sub: teeNameFor(p, r) + ' tee · CH ' + ch, color: p && squad(p.squadId) ? squad(p.squadId).color : '#888', ch }; };
+    sides = [pairing.teamA, pairing.teamB].map((ids, i) => {
+      const p0 = player((ids || [])[0]); const sq = p0 && squad(p0.squadId);
+      return { name: sq ? sq.name : 'Team ' + (i === 0 ? 'A' : 'B'), color: sq ? sq.color : '#888', players: (ids || []).map(mkUnit) };
     });
   }
   const sideNm = (ids) => (ids || []).map((x) => player(x) ? esc(player(x).name) : '?').join('/');
@@ -864,16 +868,26 @@ function printCard(r, c, pairing, idx) {
   const hdr = `<tr class="ph"><th class="pn">Hole</th>${cols.map((c) => `<th class="${c.sum ? 'sumcol' : ''}">${c.h != null ? c.h + 1 : c.sum}</th>`).join('')}</tr>`;
   const parR = `<tr class="pp"><td class="pn">Par</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].par : sumPar(c.a, c.b)}</td>`).join('')}</tr>`;
   const siR = `<tr class="ps"><td class="pn">Hcp</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].si : ''}</td>`).join('')}</tr>`;
-  const rows = units.map((u) => `<tr><td class="pn nm"><span class="cdot" style="background:${u.color}"></span>${esc(u.name)} <span class="sub">${esc(u.sub)}</span></td>${cols.map((c) => {
+  const playerRow = (u) => `<tr><td class="pn nm"><span class="cdot" style="background:${u.color}"></span>${esc(u.name)} <span class="sub">${esc(u.sub)}</span></td>${cols.map((c) => {
     if (c.sum) return '<td class="sumcol"></td>';
     const stk = Eng.strokesOnHole(u.ch, holes[c.h].si, N);
     return `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`;
-  }).join('')}</tr>`).join('');
-  let table = `<table class="pcard">${hdr}${parR}${siR}${rows}</table>`;
+  }).join('')}</tr>`;
+  const fillRow = (label, color, cls) => `<tr class="${cls}"><td class="pn ${cls}-lbl">${color ? `<span class="cdot" style="background:${color}"></span>` : ''}${esc(label)}</td>${cols.map((c) => c.sum ? '<td class="sumcol"></td>' : '<td class="cell"></td>').join('')}</tr>`;
+  let body = '';
+  sides.forEach((sd) => {
+    sd.players.forEach((u) => { body += playerRow(u); });
+    if (isTeam) body += fillRow(sd.name + ' — net', sd.color, 'ptnet');
+  });
+  body += fillRow(isTeam ? 'Hole won (team)' : 'Hole won', '', 'pwon');
+  let table = `<table class="pcard">${hdr}${parR}${siR}${body}</table>`;
+  const wonNote = isTeam
+    ? 'Write each side\'s counting net per hole, then ✓ the winning team.'
+    : 'Mark ✓ for whoever wins each hole.';
   return `<div class="print-card">
     <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}</div></div>
     ${table}
-    <div class="pc-foot">• = handicap stroke received on that hole. Scorer ____________  Att. ____________</div>
+    <div class="pc-foot">• = handicap stroke received. ${wonNote} Scorer ____________  Att. ____________</div>
   </div>`;
 }
 
