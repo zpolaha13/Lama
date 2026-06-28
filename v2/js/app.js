@@ -991,7 +991,7 @@ app.addEventListener('click', (e) => {
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
     'load-sample': () => { Store.importJSON(JSON.stringify(sampleTournament())); ui.view = 'home'; render(); },
     'weight-mode': () => Store.update((s) => { s.tournament.weightMode = s.tournament.weightMode === 'normalized' ? 'true' : 'normalized'; }),
-    'set-weight': () => Store.update((s) => { s.tournament.weightMode = t.value; }),
+    'set-weight': () => { Store.update((s) => { s.tournament.weightMode = t.value; }); try { e.target.blur(); } catch (err) {} render(); },
     sheet: () => { ui.sheet = t.dataset.sheet; render(); },
     'close-sheet': () => { if (e.target.closest('[data-stop]')) return; ui.sheet = null; render(); },
     theme: () => toggleTheme(),
