@@ -128,7 +128,38 @@ export function resolvePairingMatch(state, round, pairing) {
     netsB = bestBallNets(pb, holes, (pid, h) => getScore(round, pid, h));
   }
   const m = matchFromNets(netsA, netsB, holes.length);
-  return { pairing, squadA, squadB, chA, chB, hc, m };
+  return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB };
+}
+
+/* Points a match awards to each side under a given scoring system.
+ * system 'match'  : winner gets `win`, tie splits (classic Ryder-Cup).
+ * system 'holes'  : each won hole = `holePoints` (halved hole splits it), plus
+ *                   `matchPoints` for winning the overall match (tie splits).
+ * `available` is the FULL points the match can yield (so the Tournament target
+ * stays stable as holes fill in): holes mode = holePoints*holes + matchPoints. */
+export function matchPoints(res, opts) {
+  const o = opts || {};
+  let a = 0, b = 0, available;
+  if (o.system === 'holes') {
+    const hp = o.holePoints != null ? Number(o.holePoints) : 0.5;
+    const mp = o.matchPoints != null ? Number(o.matchPoints) : 1;
+    const na = res.netsA || [], nb = res.netsB || [];
+    const n = o.holeCount || Math.max(na.length, nb.length);
+    for (let i = 0; i < n; i++) {
+      const x = na[i], y = nb[i];
+      if (x == null || y == null) continue;
+      if (x < y) a += hp; else if (y < x) b += hp; else { a += hp / 2; b += hp / 2; }
+    }
+    if (res.m.result === 'A') a += mp; else if (res.m.result === 'B') b += mp;
+    else if (res.m.result === 'AS') { a += mp / 2; b += mp / 2; }
+    available = hp * n + mp;
+  } else {
+    const win = o.win != null ? Number(o.win) : 1;
+    if (res.m.result === 'A') a = win; else if (res.m.result === 'B') b = win;
+    else if (res.m.result === 'AS') { a = win / 2; b = win / 2; }
+    available = win;
+  }
+  return { a, b, available };
 }
 
 /* ---- resolve a whole round ---- */
@@ -137,12 +168,21 @@ export function resolveRound(state, round) {
   const raw = {};
   Object.keys(state.squads).forEach((sid) => (raw[sid] = 0));
   let pointsAvailable = 0;
-  // points awarded for winning a match in this round (tie = half). Per-round override,
-  // else tournament default, else 1.
+  // Scoring system for this round. 'match' = classic win/tie per match.
+  // 'holes' = points per hole won + a bonus for the overall match (variable
+  // total, scales with holes). Per-round override, else tournament default.
   const rule = round.scoringRule || {};
-  const win = rule.pointsPerMatch != null ? Number(rule.pointsPerMatch)
-    : (state.tournament.winPoints != null ? state.tournament.winPoints : 1);
-  const tie = win / 2;
+  const course = state.courses[round.courseId];
+  const holeCount = course && course.holes ? course.holes.length : 18;
+  const system = rule.pointSystem || 'match';
+  const opts = {
+    system,
+    win: rule.pointsPerMatch != null ? Number(rule.pointsPerMatch)
+      : (state.tournament.winPoints != null ? state.tournament.winPoints : 1),
+    holePoints: rule.holePoints != null ? Number(rule.holePoints) : 0.5,
+    matchPoints: rule.matchPoints != null ? Number(rule.matchPoints) : 1,
+    holeCount,
+  };
 
   (round.pairings || []).forEach((pairing) => {
     const res = resolvePairingMatch(state, round, pairing);
@@ -151,13 +191,11 @@ export function resolveRound(state, round) {
     // award points to anyone — skip it so it doesn't leak into a phantom
     // "null" squad and deflate everyone's normalized share / the target.
     if (!res.squadA || !res.squadB || res.squadA === res.squadB) return;
-    pointsAvailable += win;
-    if (res.m.result === 'A') raw[res.squadA] = (raw[res.squadA] || 0) + win;
-    else if (res.m.result === 'B') raw[res.squadB] = (raw[res.squadB] || 0) + win;
-    else if (res.m.result === 'AS') {
-      raw[res.squadA] = (raw[res.squadA] || 0) + tie;
-      raw[res.squadB] = (raw[res.squadB] || 0) + tie;
-    }
+    const pts = matchPoints(res, opts);
+    pointsAvailable += pts.available;
+    raw[res.squadA] = (raw[res.squadA] || 0) + pts.a;
+    raw[res.squadB] = (raw[res.squadB] || 0) + pts.b;
+    res.pts = pts; // { a, b, available } for the round leaderboard
     matches.push(res);
   });
 
@@ -178,7 +216,7 @@ export function resolveRound(state, round) {
     else status = matches.every((x) => x.m.result !== 'IP') && matches.length > 0 ? 'final' : 'live';
   }
 
-  return { roundId: round.id, format: round.format, matches, raw, contribution, pointsAvailable, status, mode, normalizeTarget: target };
+  return { roundId: round.id, format: round.format, matches, raw, contribution, pointsAvailable, status, mode, normalizeTarget: target, pointSystem: system, holePoints: opts.holePoints, matchPoints: opts.matchPoints };
 }
 
 /* ---- full tournament standings ---- */

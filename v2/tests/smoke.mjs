@@ -108,6 +108,12 @@ fireClick({ action: 'auto-pair', id: 'r1' }); check('auto-pair-12');
 fireChange({ action: 'round-ppm', id: 'r1' }, '2');
 fireChange({ action: 'round-hcpallow', id: 'r1' }, '80');
 fireChange({ action: 'round-hcpmode', id: 'r1' }, 'relative'); check('round-config');
+// hole+match point system controls
+fireChange({ action: 'round-psys', id: 'r1' }, 'holes');
+fireChange({ action: 'round-holepts', id: 'r1' }, '0.5');
+fireChange({ action: 'round-matchpts', id: 'r1' }, '1'); check('round-scoring-holes');
+fireClick({ action: 'tab', tab: 'standings' }); fireClick({ action: 'scope', scope: 'r1' }); check('standings-holes');
+fireChange({ action: 'round-psys', id: 'r1' }, 'match');
 // course editor + tee selection
 fireClick({ action: 'add-course' }); check('add-course');
 fireChange({ action: 'tee-rating', cid: 'legacy', id: 'legacy-blue' }, '72.3');

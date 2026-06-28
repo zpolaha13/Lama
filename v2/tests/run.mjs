@@ -208,6 +208,25 @@ eq(diffPaths({ p: [1, 2] }, { p: [1, 2, 3] }, '', {}), { p: [1, 2, 3] }, 'diff: 
 // no change -> empty
 eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = empty');
 
+/* ---------------- hole + match point system ---------------- */
+{
+  const h = mkState('true');
+  // Red wins every hole and the match in R1 (4 vs 5 net everywhere, scratch course)
+  ['p1', 'p2', 'p3', 'p4'].forEach((pid) => { h.rounds.r1.scores[pid] = {}; for (let k = 0; k < 18; k++) h.rounds.r1.scores[pid][k] = 4; });
+  ['q1', 'q2', 'q3', 'q4'].forEach((pid) => { h.rounds.r1.scores[pid] = {}; for (let k = 0; k < 18; k++) h.rounds.r1.scores[pid][k] = 5; });
+  h.rounds.r1.scoringRule = { pointSystem: 'holes', holePoints: 0.5, matchPoints: 1, handicapAllowance: 100, handicapMode: 'absolute' };
+  const rr = resolveRound(h, h.rounds.r1);
+  eq(rr.raw.red, 4 * (0.5 * 18 + 1), 'holes: red sweep = 4 matches * (9+1) = 40');
+  eq(rr.raw.blue, 0, 'holes: blue 0');
+  eq(rr.pointsAvailable, 4 * 10, 'holes: available = matches * (holes*hp + mp)');
+  eq(rr.matches[0].pts.a, 10, 'holes: one swept match = 0.5*18 + 1');
+  // unplayed round still reports full projected available (stable target)
+  const empty = mkState('true');
+  empty.rounds.r1.scoringRule = { pointSystem: 'holes', holePoints: 0.5, matchPoints: 1 };
+  eq(resolveRound(empty, empty.rounds.r1).pointsAvailable, 40, 'holes: projected available even with no scores');
+  eq(resolveRound(empty, empty.rounds.r1).raw.red, 0, 'holes: nothing earned yet');
+}
+
 /* ---------------- CSV import/export round-trip ---------------- */
 {
   const orig = sampleTournament();
@@ -238,6 +257,12 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   eq(b.skins.r2.mode, 'gross', 'csv: skins mode preserved');
   eq(b.skins.r2.tie, 'split', 'csv: skins tie preserved');
   eq(b.payouts.potPerPlayer, 20, 'csv: payouts pot preserved');
+  // hole+match scoring survives a round-trip
+  o.rounds.r1.scoringRule = Object.assign({}, o.rounds.r1.scoringRule, { pointSystem: 'holes', holePoints: 0.5, matchPoints: 2 });
+  const b2 = fromCSV(toCSV(o));
+  eq(b2.rounds.r1.scoringRule.pointSystem, 'holes', 'csv: pointSystem preserved');
+  eq(b2.rounds.r1.scoringRule.holePoints, 0.5, 'csv: holePoints preserved');
+  eq(b2.rounds.r1.scoringRule.matchPoints, 2, 'csv: matchPoints preserved');
   eq(w.length, 0, 'csv: clean round-trip has no warnings');
   // BOM (Excel) must not eat the first section
   eq(fromCSV('﻿' + toCSV(o)).tournament.name, o.tournament.name, 'csv: BOM stripped');

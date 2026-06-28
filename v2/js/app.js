@@ -361,7 +361,10 @@ function matchList(rr) {
     const tag = Eng.matchTag(res.m, sa ? sa.name.replace('Team ', '') : 'A', sb ? sb.name.replace('Team ', '') : 'B');
     const aUp = res.m.status > 0, bUp = res.m.status < 0;
     let pt = '';
-    if (res.m.result === 'A') pt = '1 – 0';
+    if (rr.pointSystem === 'holes' && res.pts) {
+      const fmt = (n) => Math.round(n * 100) / 100;
+      pt = `${fmt(res.pts.a)} – ${fmt(res.pts.b)}`;
+    } else if (res.m.result === 'A') pt = '1 – 0';
     else if (res.m.result === 'B') pt = '0 – 1';
     else if (res.m.result === 'AS') pt = '½ – ½';
     else pt = res.m.played ? 'in play' : '';
@@ -766,14 +769,33 @@ function setupRounds() {
       </div>
       <div class="field"><label>Tee (everyone unless overridden)</label><select data-action="round-tee" data-id="${id}">${teeOptions(r.courseId, r.defaultTeeId)}</select></div>
       <details data-dk="tee-${id}" ${ui.openDetails.has('tee-' + id) ? 'open' : ''} style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
-      <div class="grid3" style="margin-bottom:6px">
-        <div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
-        <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
+      ${(() => {
+        const sr = r.scoringRule || {};
+        const sys = sr.pointSystem || 'match';
+        const hp = sr.holePoints != null ? sr.holePoints : 0.5;
+        const mp = sr.matchPoints != null ? sr.matchPoints : 1;
+        const ppm = sr.pointsPerMatch != null ? sr.pointsPerMatch : 1;
+        const nholes = (course(r.courseId) || {}).holes ? course(r.courseId).holes.length : 18;
+        const ptsFields = sys === 'holes'
+          ? `<div class="field"><label>Pts / hole</label><input type="number" step="0.5" min="0" data-action="round-holepts" data-id="${id}" value="${hp}"></div>
+             <div class="field"><label>Pts / match win</label><input type="number" step="0.5" min="0" data-action="round-matchpts" data-id="${id}" value="${mp}"></div>`
+          : `<div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${ppm}"></div>`;
+        return `<div class="grid2" style="margin-bottom:6px">
+        <div class="field"><label>Scoring</label><select data-action="round-psys" data-id="${id}">
+          <option value="match" ${sys !== 'holes' ? 'selected' : ''}>Match (win/tie)</option>
+          <option value="holes" ${sys === 'holes' ? 'selected' : ''}>Per hole + match</option>
+        </select></div>
         <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
           <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each own</option>
           <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off low</option>
         </select></div>
       </div>
+      <div class="${sys === 'holes' ? 'grid3' : 'grid2'}" style="margin-bottom:6px">
+        ${ptsFields}
+        <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
+      </div>
+      ${sys === 'holes' ? `<div class="muted" style="font-size:12px;margin:-2px 0 8px">Each won hole = ${hp} pt (halves split), winning the match = ${mp} pt → up to <b>${(hp * nholes + mp)}</b> pts per match over ${nholes} holes.</div>` : ''}`;
+      })()}
       <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
 }
@@ -1019,6 +1041,9 @@ app.addEventListener('change', (e) => {
     'round-format': () => Store.update((s) => { s.rounds[t.dataset.id].format = v; }),
     'round-course': () => Store.update((s) => { s.rounds[t.dataset.id].courseId = v; }),
     'round-ppm': () => ruleSet(t.dataset.id, { pointsPerMatch: v === '' ? 1 : Number(v) }),
+    'round-psys': () => { ruleSet(t.dataset.id, { pointSystem: v }); try { e.target.blur(); } catch (err) {} render(); },
+    'round-holepts': () => ruleSet(t.dataset.id, { holePoints: v === '' ? 0.5 : Math.max(0, Number(v)) }),
+    'round-matchpts': () => ruleSet(t.dataset.id, { matchPoints: v === '' ? 1 : Math.max(0, Number(v)) }),
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
     'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
     'round-tee': () => Store.update((s) => { s.rounds[t.dataset.id].defaultTeeId = v; }),
@@ -1057,7 +1082,7 @@ function setHoleCount(holes, n) {
 function ruleSet(rid, patch) {
   Store.update((s) => {
     const r = s.rounds[rid];
-    r.scoringRule = Object.assign({ pointsPerMatch: 1, handicapAllowance: 100, handicapMode: 'absolute' }, r.scoringRule, patch);
+    r.scoringRule = Object.assign({ pointSystem: 'match', pointsPerMatch: 1, holePoints: 0.5, matchPoints: 1, handicapAllowance: 100, handicapMode: 'absolute' }, r.scoringRule, patch);
   });
 }
 

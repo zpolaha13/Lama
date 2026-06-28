@@ -132,7 +132,14 @@ export function fromCSV(text, warnings) {
     st.rounds[rid] = {
       id: rid, name: r.name || rid, courseId: cid, format: (r.format || 'singles').toLowerCase(),
       defaultTeeId: teeId, date: r.date || '', status: 'auto',
-      scoringRule: { handicapAllowance: Number(r.handicapAllowance) || 100, handicapMode: (r.handicapMode || 'absolute').toLowerCase() },
+      scoringRule: {
+        handicapAllowance: Number(r.handicapAllowance) || 100,
+        handicapMode: (r.handicapMode || 'absolute').toLowerCase(),
+        pointSystem: String(r.pointSystem || 'match').toLowerCase() === 'holes' ? 'holes' : 'match',
+        pointsPerMatch: (r.ptsPerMatch !== '' && r.ptsPerMatch != null) ? Number(r.ptsPerMatch) : 1,
+        holePoints: (r.ptsPerHole !== '' && r.ptsPerHole != null) ? Number(r.ptsPerHole) : 0.5,
+        matchPoints: (r.ptsMatchBonus !== '' && r.ptsMatchBonus != null) ? Number(r.ptsMatchBonus) : 1,
+      },
       pairings: [], scores: {}, teamScores: {}, teeOverrides: {},
     };
     st.tournament.roundOrder.push(rid);
@@ -203,11 +210,13 @@ export function toCSV(st) {
   Object.values(st.courses).forEach((c) => (c.holes || []).forEach((h, i) => row([c.id, i + 1, h.par, h.si])));
   L.push('');
 
-  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue,skinsMode,skinsTie,date');
+  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch,ptsPerHole,ptsMatchBonus,skinsValue,skinsMode,skinsTie,date');
   order.forEach((rid) => {
     const r = st.rounds[rid]; if (!r) return;
-    const sk = st.skins[rid] || {};
-    row([rid, r.name, r.courseId, r.format, teeName(st, r.courseId, r.defaultTeeId), (r.scoringRule || {}).handicapAllowance, (r.scoringRule || {}).handicapMode, sk.enabled ? sk.value : 0, sk.mode || 'net', sk.tie || 'rollover', r.date || '']);
+    const sk = st.skins[rid] || {}; const sr = r.scoringRule || {};
+    row([rid, r.name, r.courseId, r.format, teeName(st, r.courseId, r.defaultTeeId), sr.handicapAllowance, sr.handicapMode,
+      sr.pointSystem || 'match', sr.pointsPerMatch != null ? sr.pointsPerMatch : 1, sr.holePoints != null ? sr.holePoints : 0.5, sr.matchPoints != null ? sr.matchPoints : 1,
+      sk.enabled ? sk.value : 0, sk.mode || 'net', sk.tie || 'rollover', r.date || '']);
   });
   L.push('');
 
