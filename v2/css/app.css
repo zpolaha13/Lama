@@ -142,7 +142,7 @@ td.c, th.c { text-align: center; }
 .match .pt { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* ---------- round timeline ---------- */
-.round-card { display: block; width: 100%; text-align: left; background: var(--bg); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow); padding: var(--s4); margin-bottom: var(--s3); cursor: pointer; }
+.round-card { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--ink); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow); padding: var(--s4); margin-bottom: var(--s3); cursor: pointer; }
 .round-card .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .round-card .rn { font-size: 16px; font-weight: 800; }
 .round-card .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
