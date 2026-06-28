@@ -117,6 +117,10 @@ eq(r1n.contribution.red, 3.5, 'normalized contribution red 3.5');
   eq(computeStandings(w).target, 12.5, 'normalized target moves with worth -> 12.5');
   w.tournament.normalizeTarget = 2;
   eq(computeStandings(w).target, 3.5, 'normalized target 3.5 at worth 2 (reachable)');
+  // per-round weighted value is exposed for the breakdown chip
+  w.tournament.normalizeTarget = 4;
+  eq(computeStandings(w).rounds.every((r) => r.availableWeighted === 4), true, 'normalized: each round shows weighted 4');
+  eq(computeStandings(mkState('true')).rounds.map((r) => r.availableWeighted).join(','), '4,2,2', 'true: weighted = raw match counts');
   // true points on the same field stays match-count based
   const tp = mkState('true');
   eq(computeStandings(tp).totalAvailable, 8, 'true total = 4+2+2 matches');

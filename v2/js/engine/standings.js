@@ -208,6 +208,7 @@ export function computeStandings(state) {
   const normTarget = state.tournament.normalizeTarget || 4;
   const roundAvail = (r) => (mode === 'normalized' ? (r.pointsAvailable > 0 ? normTarget : 0) : r.pointsAvailable);
   const availList = rounds.map(roundAvail);
+  rounds.forEach((r, i) => { r.availableWeighted = availList[i]; }); // what each round is worth toward the Tournament
   const totalAvailable = (best && best > 0 && best < rounds.length)
     ? availList.slice().sort((a, b) => b - a).slice(0, best).reduce((s, v) => s + v, 0)
     : availList.reduce((s, v) => s + v, 0);

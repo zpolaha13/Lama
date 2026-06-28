@@ -214,7 +214,7 @@ function breakdownCard(stand, full) {
     }).join('');
     return `<tr data-action="open-round" data-id="${r.roundId}">
       <td><b>${esc(ro.name.replace(/^Round \d+ — /, 'R' + (roundIds().indexOf(r.roundId) + 1) + ' '))}</b><div class="muted" style="font-size:12px">${fmtInfo(ro.format).short} · ${fmtInfo(ro.format).label}</div></td>
-      <td class="c"><span class="chip">${r.pointsAvailable}</span></td>
+      <td class="c"><span class="chip">${r.availableWeighted != null ? r.availableWeighted : r.pointsAvailable}</span></td>
       ${cells}
       <td class="r"><span class="status ${r.status}">${r.status === 'live' ? 'Live' : r.status}</span></td>
     </tr>`;
