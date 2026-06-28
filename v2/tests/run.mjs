@@ -102,6 +102,22 @@ const r1n = resolveRound(stN, stN.rounds.r1);
 eq(r1n.raw.red, 3.5, 'normalized raw red 3.5 (3 wins + 1 halve)');
 eq(r1n.contribution.red, 3.5, 'normalized contribution red 3.5');
 
+// equal-weight: total available + target must track normalizeTarget, not raw match count
+{
+  const w = mkState('normalized'); // 3 rounds, all with pairings
+  w.tournament.normalizeTarget = 4;
+  eq(computeStandings(w).totalAvailable, 12, 'normalized total = 3 rounds * 4');
+  eq(computeStandings(w).target, 6.5, 'normalized target 6.5 at worth 4');
+  w.tournament.normalizeTarget = 8;
+  eq(computeStandings(w).totalAvailable, 24, 'normalized total = 3 rounds * 8');
+  eq(computeStandings(w).target, 12.5, 'normalized target moves with worth -> 12.5');
+  w.tournament.normalizeTarget = 2;
+  eq(computeStandings(w).target, 3.5, 'normalized target 3.5 at worth 2 (reachable)');
+  // true points on the same field stays match-count based
+  const tp = mkState('true');
+  eq(computeStandings(tp).totalAvailable, 8, 'true total = 4+2+2 matches');
+}
+
 // chFor sanity
 eq(chFor(st, st.players.p1, st.rounds.r1), 0, 'chFor scratch on par72/113');
 

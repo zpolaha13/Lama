@@ -191,14 +191,24 @@ export function computeStandings(state) {
     rounds.forEach((r) => Object.keys(cup).forEach((sid) => (cup[sid] += r.contribution[sid] || 0)));
   }
 
-  const totalAvailable = rounds.reduce((s, r) => s + r.pointsAvailable, 0);
+  // Points actually in play per round must match how they're SCORED. Under
+  // equal-weight every round distributes `normalizeTarget` points (not its raw
+  // match count), so the target/clinch math has to use the weighted figure too
+  // — otherwise "first to N" ignores the number you set.
+  const mode = state.tournament.weightMode || 'true';
+  const normTarget = state.tournament.normalizeTarget || 4;
+  const roundAvail = (r) => (mode === 'normalized' ? (r.pointsAvailable > 0 ? normTarget : 0) : r.pointsAvailable);
+  const availList = rounds.map(roundAvail);
+  const totalAvailable = (best && best > 0 && best < rounds.length)
+    ? availList.slice().sort((a, b) => b - a).slice(0, best).reduce((s, v) => s + v, 0)
+    : availList.reduce((s, v) => s + v, 0);
   const target = Math.floor(totalAvailable / 2) + 0.5;
 
   // clinch: leader has >= target, or lead exceeds points still unplayed
   const ids = Object.keys(cup).sort((a, b) => cup[b] - cup[a]);
   const leader = ids[0];
   const runnerUp = ids[1];
-  const playedAvail = rounds.filter((r) => r.status === 'final').reduce((s, r) => s + r.pointsAvailable, 0);
+  const playedAvail = rounds.reduce((s, r) => s + (r.status === 'final' ? roundAvail(r) : 0), 0);
   const remaining = totalAvailable - playedAvail;
   let clinched = null;
   if (leader != null && runnerUp != null) {

@@ -180,7 +180,7 @@ function viewStandings() {
     .concat(stand.rounds.map((r) => `<button data-action="scope" data-scope="${r.roundId}" class="${ui.scope === r.roundId ? 'active' : ''}">${esc(round(r.roundId).name.replace(/^Round \d+ — /, ''))}</button>`));
   let body;
   if (ui.scope === 'overall') {
-    body = weightToggle() + breakdownCard(stand, true);
+    body = weightToggle(stand) + breakdownCard(stand, true);
   } else {
     const r = stand.rounds.find((x) => x.roundId === ui.scope) || stand.rounds[0];
     body = roundBoard(r);
@@ -188,11 +188,15 @@ function viewStandings() {
   return `<div class="seg">${segs.join('')}</div>${body}`;
 }
 
-function weightToggle() {
+function weightToggle(stand) {
   const mode = S().tournament.weightMode || 'true';
+  const perRound = stand.rounds.map((r, i) => `R${i + 1} ${r.pointsAvailable}`).join(' · ');
+  const detail = mode === 'normalized'
+    ? `Each round worth ${S().tournament.normalizeTarget} · first to ${stand.target}`
+    : `${perRound} pts · first to ${stand.target}`;
   return `<div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div><div style="font-weight:700;font-size:14px">Scoring: ${mode === 'normalized' ? 'Equal-weight rounds' : 'True points'}</div>
-    <div class="muted" style="font-size:12px">${mode === 'normalized' ? `Each round worth ${S().tournament.normalizeTarget} toward the Tournament` : 'Singles 4 · Fourball 2 · Scramble 2'}</div></div>
+    <div class="muted" style="font-size:12px">${detail}</div></div>
     <button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>
   </div>`;
 }
