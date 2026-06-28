@@ -1,7 +1,7 @@
 /* =========================================================================
  * seed.js — Sample "trip template" matching the real trip:
  * 3 rounds (Legacy singles, Mid South fourball, Talamore scramble),
- * 2 squads of 4, all handicapped, one running Cup score.
+ * 2 squads of 4, all handicapped, one running Tournament score.
  * Course slope/rating/SI are placeholders — edit in Setup.
  * ========================================================================= */
 import { uid } from './store.js';

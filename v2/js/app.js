@@ -62,7 +62,7 @@ function render() {
   if (sy) { try { window.scrollTo(0, sy); } catch (e) {} }
 }
 
-/* ---------------- Cup hero header ---------------- */
+/* ---------------- Tournament hero header ---------------- */
 function heroActions() {
   return `<div class="hero-actions">
     ${hasData() && Store.isOnline() ? '<button class="icon-btn" data-action="share" title="Share live link">⇪</button>' : ''}
@@ -115,12 +115,12 @@ function viewEmpty() {
   return `<div class="card"><div class="empty">
     <div class="big">⛳</div>
     <h2>Welcome to your Golf Trip</h2>
-    <p class="muted">Your trip is one <b>Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your <b>team</b>. First team to the target wins the Cup.</p>
+    <p class="muted">Your trip is one <b>Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your <b>team</b>. First team to the target wins the Tournament.</p>
     <div class="btn-row" style="margin-top:16px">
-      <button class="btn" data-action="load-sample">⛳ Load our trip (12 players, 3 rounds)</button>
+      <button class="btn" data-action="import-json">⬆ Import JSON</button>
       <button class="btn secondary" data-action="tab" data-tab="setup">Build from scratch ⚙️</button>
     </div>
-    <p class="muted" style="margin-top:12px;font-size:13px">Loads the real field (Red vs Blue, 6 v 6) and all three days' matchups at Legacy, Mid South &amp; Talamore. You can edit anything in Setup afterward.</p>
+    <p class="muted" style="margin-top:12px;font-size:13px">Import a tournament you exported earlier (or that someone shared), or build one from scratch in Setup. You can also start from a spreadsheet in <b>Setup → Sync</b>.</p>
   </div></div>`;
 }
 
@@ -147,7 +147,7 @@ function viewHome() {
 function actionCard(stand) {
   const me = meId() ? player(meId()) : null;
   // find my next/active match
-  let lbl = 'The Cup', msg = '', cta = '';
+  let lbl = 'Tournament', msg = '', cta = '';
   const liveR = stand.rounds.find((r) => r.status === 'live');
   const nextR = stand.rounds.find((r) => r.status === 'upcoming');
   if (me) {
@@ -192,7 +192,7 @@ function weightToggle() {
   const mode = S().tournament.weightMode || 'true';
   return `<div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div><div style="font-weight:700;font-size:14px">Scoring: ${mode === 'normalized' ? 'Equal-weight rounds' : 'True points'}</div>
-    <div class="muted" style="font-size:12px">${mode === 'normalized' ? `Each round worth ${S().tournament.normalizeTarget} toward the Cup` : 'Singles 4 · Fourball 2 · Scramble 2'}</div></div>
+    <div class="muted" style="font-size:12px">${mode === 'normalized' ? `Each round worth ${S().tournament.normalizeTarget} toward the Tournament` : 'Singles 4 · Fourball 2 · Scramble 2'}</div></div>
     <button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>
   </div>`;
 }
@@ -215,10 +215,10 @@ function breakdownCard(stand, full) {
   }).join('');
   const head = ids.map((sid) => `<th class="c">${sdot(sid)}${esc(squad(sid).name.replace('Team ', ''))}</th>`).join('');
   return `<div class="card breakdown">
-    ${full ? '' : '<h2>Cup breakdown</h2>'}
+    ${full ? '' : '<h2>Tournament breakdown</h2>'}
     <table><thead><tr><th>Round</th><th class="c">Pts</th>${head}<th class="r">Status</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div class="muted" style="font-size:12px;margin-top:8px">Tap a round to see its live leaderboard. First to ${stand.target} wins the Cup.</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Tap a round to see its live leaderboard. First to ${stand.target} wins the Tournament.</div>
   </div>`;
 }
 
@@ -703,7 +703,7 @@ function setupTournament() {
       <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${!normalized ? 'selected' : ''}>True points</option><option value="normalized" ${normalized ? 'selected' : ''}>Equal-weight rounds</option></select></div>
       ${normalized ? `<div class="field"><label>Points each round is worth</label><input type="number" data-action="set-normtarget" value="${st.tournament.normalizeTarget}"></div>` : ''}
     </div>
-    <div class="tip" style="margin-top:4px"><b>First to ${stand.target}</b> wins (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value; "Equal-weight" makes every round worth the same toward the Cup. Leave on <b>True points</b> if unsure.</div>
+    <div class="tip" style="margin-top:4px"><b>First to ${stand.target}</b> wins (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value; "Equal-weight" makes every round worth the same toward the Tournament. Leave on <b>True points</b> if unsure.</div>
   </div>`;
 }
 
@@ -792,11 +792,12 @@ function setupData() {
     <input id="csv-file" type="file" accept=".csv,text/csv" data-action="csv-file" style="display:none" />
     <div class="muted" style="font-size:12px;margin-top:8px">The template is your current trip as a spreadsheet — players, courses, holes, rounds &amp; pairings. Edit it in Excel/Google Sheets, then <b>Import</b> to load a whole tournament at once. Importing <b>replaces</b> the current tournament's data.</div>
   </div>`;
-  html += `<div class="card"><h2>Data</h2><div class="btn-row">
-    <button class="btn secondary small" data-action="load-sample">Load our trip (12 players)</button>
-    <button class="btn secondary small" data-action="export">Export</button>
+  html += `<div class="card"><h2>Data (JSON)</h2><div class="btn-row">
+    <button class="btn secondary small" data-action="export">⬇ Export JSON</button>
+    <button class="btn secondary small" data-action="import-json">⬆ Import JSON</button>
     <button class="btn danger small" data-action="clear">Clear all</button>
-  </div></div>`;
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:8px">Export saves the whole tournament as a JSON file. Import loads one back (replaces the current tournament's data).</div></div>`;
   return html;
 }
 
@@ -898,12 +899,12 @@ function sheet() {
   const stand = computeStandings(st);
   const rules = stand.rounds.map((rr, i) => { const r = round(rr.roundId); const f = fmtInfo(r.format); return `<div class="rule"><b>R${i + 1}: ${esc(r.name.replace(/^Round \d+ — /, ''))} — ${f.label}</b><div class="ex">${esc(f.explainer)} <b>${rr.pointsAvailable} pts</b> · ${esc(hcpLabel(r))}.</div></div>`; }).join('');
   return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
-    <h2>How the Cup works</h2>
-    <p>Your trip is <b>one Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your team. <b>First to ${stand.target} wins the Cup.</b></p>
+    <h2>How the Tournament works</h2>
+    <p>Your trip is <b>one Tournament</b>. Each day is a <b>Round</b> with its own game. Win your matches to earn points for your team. <b>First to ${stand.target} wins the Tournament.</b></p>
     <div style="margin:12px 0">${rules}</div>
-    <div class="rule"><b>Target (${stand.target})</b><div class="ex">There are <b>${stand.totalAvailable} points</b> up for grabs across all rounds. A team clinches the Cup once it has more than half — so first to <b>${stand.target}</b>.</div></div>
+    <div class="rule"><b>Target (${stand.target})</b><div class="ex">There are <b>${stand.totalAvailable} points</b> up for grabs across all rounds. A team clinches the Tournament once it has more than half — so first to <b>${stand.target}</b>.</div></div>
     <div class="rule"><b>Round weighting — ${st.tournament.weightMode === 'normalized' ? 'Equal-weight' : 'True points'}</b><div class="ex">${st.tournament.weightMode === 'normalized'
-      ? 'Every round is worth the same toward the Cup, so no single day dominates.'
+      ? 'Every round is worth the same toward the Tournament, so no single day dominates.'
       : 'Each round counts at face value — a round with more matches puts more points in play. (Switch to "Equal-weight" in Setup if you\'d rather every round count the same.)'}</div></div>
     <p class="muted" style="font-size:13px">Every player gets handicap strokes based on the tee\'s slope &amp; rating (the red dots on the scorecard).</p>
     <button class="btn" data-action="close-sheet">Got it</button>
@@ -954,6 +955,7 @@ app.addEventListener('click', (e) => {
     share: () => shareLink(),
     'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
     export: () => doExport(),
+    'import-json': () => doImportJSON(),
     'csv-template': () => doCsvTemplate(),
     'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
@@ -1105,6 +1107,30 @@ function doExport() {
 }
 
 function slugName(s) { return (s || 'golf-trip').replace(/\s+/g, '-').toLowerCase(); }
+
+function doImportJSON() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json,application/json';
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let next;
+      try { next = JSON.parse(String(reader.result)); }
+      catch (err) { alert('That file isn\'t valid JSON.\n\n' + err.message); return; }
+      if (!next || !next.tournament || !next.players) { alert('That JSON doesn\'t look like a tournament export.'); return; }
+      const np = Object.keys(next.players || {}).length;
+      const nr = Object.keys(next.rounds || {}).length;
+      if (!confirm('Import "' + ((next.tournament && next.tournament.name) || 'tournament') + '"?\n\n' + np + ' players, ' + nr + ' rounds. This replaces the current tournament\'s data.')) return;
+      Store.importJSON(JSON.stringify(next));
+      ui.view = 'home';
+      render();
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
 
 function doCsvTemplate() {
   const blob = new Blob([toCSV(S())], { type: 'text/csv' });

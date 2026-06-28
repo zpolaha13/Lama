@@ -19,7 +19,7 @@ body {
 .screen { padding: var(--s4); animation: fade .18s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-/* ---------- Cup hero header ---------- */
+/* ---------- Tournament hero header ---------- */
 .hero {
   position: sticky; top: 0; z-index: 30;
   background: linear-gradient(180deg, var(--green) 0%, var(--green-press) 100%);

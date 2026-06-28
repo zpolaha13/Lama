@@ -2,7 +2,7 @@
  * engine/standings.js — Pure tournament model. Turns raw scores into:
  *   - per-round match results + points (Ryder-Cup: 1 win / 0.5 tie)
  *   - per-round squad points (raw + weighted contribution)
- *   - the overall Cup total, target, and clinch state
+ *   - the overall Tournament total, target, and clinch state
  *
  * Every format funnels into the same currency: points awarded to a SQUAD.
  * Depends only on engine/golf.js. No DOM, no state mutation.
