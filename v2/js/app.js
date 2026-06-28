@@ -1258,7 +1258,8 @@ function fetchGhinIndex(num) {
     url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + 'ghin=' + encodeURIComponent(num);
     if (token) url += '&token=' + encodeURIComponent(token);
   } else {
-    url = 'https://api2.ghin.com/api/v1/golfers.json?golfer_id=' + encodeURIComponent(num) + '&status=Active&per_page=1&page=1&source=GHINcom';
+    // mirror ghin.com's own request exactly (from_ghin=true = search by GHIN #)
+    url = 'https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&golfer_id=' + encodeURIComponent(num) + '&source=GHINcom';
     if (token) opts.headers.authorization = 'Bearer ' + token;
   }
   return fetch(url, opts).then((r) => {

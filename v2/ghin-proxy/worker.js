@@ -66,8 +66,8 @@ async function login(env) {
 }
 
 async function searchGolfer(token, ghin) {
-  // Exact endpoint captured from ghin.com's own network traffic.
-  const url = `${GHIN_BASE}/golfers.json?golfer_id=${encodeURIComponent(ghin)}&status=Active&per_page=1&page=1&source=GHINcom`;
+  // Exact query ghin.com's own site sends (from_ghin=true = search by GHIN #).
+  const url = `${GHIN_BASE}/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&golfer_id=${encodeURIComponent(ghin)}&source=GHINcom`;
   return fetch(url, { headers: { Authorization: 'Bearer ' + token, accept: 'application/json' } });
 }
 

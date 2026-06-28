@@ -46,7 +46,7 @@
   const rows = [];
   for (const ghin of GHINS) {
     const id = String(ghin).replace(/\D/g, '');
-    const url = `https://api2.ghin.com/api/v1/golfers.json?golfer_id=${id}&status=Active&per_page=1&page=1&source=GHINcom`;
+    const url = `https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&golfer_id=${id}&source=GHINcom`;
     try {
       const r = await fetch(url, { headers, credentials: 'include' });
       if (!r.ok) { rows.push({ ghin: id, name: 'HTTP ' + r.status, index: '' }); continue; }
