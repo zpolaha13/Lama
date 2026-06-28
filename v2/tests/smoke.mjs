@@ -13,11 +13,13 @@ globalThis.confirm = () => true;
 globalThis.alert = (m) => console.log('alert:', m);
 globalThis.prompt = () => 'Test Cup 2027';
 globalThis.Blob = class {}; globalThis.URL = { createObjectURL: () => 'blob:', revokeObjectURL() {} };
+globalThis.print = () => {};
 const docEl = { _a: {}, getAttribute(k) { return this._a[k] ?? null; }, setAttribute(k, v) { this._a[k] = v; } };
 globalThis.document = {
   documentElement: docEl,
+  body: { appendChild() {} },
   getElementById: (id) => (id === 'app' ? appEl : null),
-  createElement: () => ({ style: {}, click() {}, set href(v) {}, set download(v) {} }),
+  createElement: () => ({ style: {}, _html: '', set innerHTML(v) { this._html = v; }, get innerHTML() { return this._html; }, appendChild() {}, click() {}, set href(v) {}, set download(v) {} }),
 };
 
 let errors = 0;
@@ -87,6 +89,8 @@ fireClick({ action: 'setup-tab', tab: 'players' });
 ['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
 check('players-sorted');
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');
+// print scorecards for all rounds (exercises card builder across all 3 formats)
+try { fireClick({ action: 'print-cards' }); console.log('ok print-cards built'); } catch (e) { errors++; console.log('PRINT ERR', e.message); }
 // multi-tournament: create a copy, then a blank, then switch back
 fireClick({ action: 'new-tourney-copy' }); check('new-tourney-copy');
 const tourneys = Store.listTournaments();

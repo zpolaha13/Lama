@@ -248,7 +248,8 @@ function viewRoundDetail() {
         <span class="status ${rr.status}">${rr.status === 'live' ? '<span class="live-pulse"></span>Live' : rr.status}</span>
       </div>
       <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} <b>${rr.pointsAvailable} points in play</b> · ${esc(hcpLabel(r))}.</div>
-      <button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
+      <div class="btn-row"><button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
+      <button class="btn secondary" data-action="print-cards" data-rid="${r.id}">🖨 Print cards</button></div>
     </div>
     ${roundBoard(rr)}
     ${skinsCard(r)}`;
@@ -300,7 +301,7 @@ function skinsCard(r) {
     <div class="field"><label>Buy-in / player ($)</label><input type="number" inputmode="numeric" data-action="skin-buyin" data-rid="${r.id}" value="${cfg.value}"></div>
     <div class="field"><label>Scoring</label><select data-action="skin-mode" data-rid="${r.id}">${sel(cfg.mode, 'net', 'Net (handicap)')}${sel(cfg.mode, 'gross', 'Gross (no strokes)')}</select></div>
     <div class="field"><label>On a tie…</label><select data-action="skin-tie" data-rid="${r.id}">${sel(cfg.tie, 'rollover', 'Roll over (carry)')}${sel(cfg.tie, 'split', 'Split the skin')}</select></div>
-    ${cfg.mode === 'net' ? `<div class="field"><label>Handicap % (curbs high-cap edge)</label><select data-action="skin-allow" data-rid="${r.id}">${[100, 90, 80, 75, 50, 25].map((a) => sel(cfg.allow, a, a + '%' + (a === 100 ? ' (full)' : ''))).join('')}</select></div>` : ''}
+    ${cfg.mode === 'net' ? `<div class="field"><label>Skins handicap % (of full hcp)</label><select data-action="skin-allow" data-rid="${r.id}">${[100, 90, 80, 75, 70, 50, 25].map((a) => sel(cfg.allow, a, a + '%' + (a === 100 ? ' (full)' : ''))).join('')}</select></div>` : ''}
   </div>`;
 
   let body = '';
@@ -753,7 +754,7 @@ function setupRounds() {
       <details data-dk="tee-${id}" ${ui.openDetails.has('tee-' + id) ? 'open' : ''} style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
       <div class="grid3" style="margin-bottom:6px">
         <div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
-        <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
+        <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
         <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
           <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each own</option>
           <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off low</option>
@@ -775,12 +776,81 @@ function setupData() {
       ? '<div class="muted" style="font-size:12px;margin-top:8px">Everyone who opens the shared link scores into the same live leaderboard. One scorer per group is smoothest.</div>'
       : '<div class="tip" style="margin-top:10px">To let everyone score on their own phone, add your free Firebase project to <b>js/config.js</b>, then re-deploy.</div>'}
   </div>`;
+  html += `<div class="card"><h2>Scorecards</h2>
+    <button class="btn" data-action="print-cards">🖨 Print / save scorecards (all rounds)</button>
+    <div class="muted" style="font-size:12px;margin-top:8px">Opens your browser's print dialog — choose <b>Save as PDF</b> (set layout to <b>Landscape</b>). 2 cards per page with each player's tee, course handicap &amp; stroke dots; cut between them.</div>
+  </div>`;
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
     <button class="btn secondary small" data-action="load-sample">Load our trip (12 players)</button>
     <button class="btn secondary small" data-action="export">Export</button>
     <button class="btn danger small" data-action="clear">Clear all</button>
   </div></div>`;
   return html;
+}
+
+/* ---------------- printable scorecards (export to PDF) ---------------- */
+function printScorecards(rids) {
+  rids = (rids && rids.length) ? rids : roundIds();
+  const cards = [];
+  rids.forEach((id) => {
+    const r = round(id); const c = course(r && r.courseId);
+    if (!r || !c) return;
+    (r.pairings || []).forEach((p, i) => cards.push(printCard(r, c, p, i)));
+  });
+  if (!cards.length) { alert('No matchups with a course to print yet.'); return; }
+  let pages = '';
+  for (let i = 0; i < cards.length; i += 2) pages += `<div class="print-page">${cards[i]}${cards[i + 1] || ''}</div>`;
+  let root = document.getElementById('scorecard-print');
+  if (!root) { root = document.createElement('div'); root.id = 'scorecard-print'; document.body.appendChild(root); }
+  root.innerHTML = pages;
+  try { window.print(); } catch (e) {}
+}
+
+function printCard(r, c, pairing, idx) {
+  const st = S();
+  const holes = c.holes;
+  let units;
+  if (r.format === 'scramble') {
+    const res = resolvePairingMatch(st, r, pairing);
+    units = ['A', 'B'].map((side) => {
+      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
+      const sid = side === 'A' ? res.squadA : res.squadB; const ch = side === 'A' ? res.chA : res.chB;
+      return { name: squad(sid) ? squad(sid).name : side, sub: ids.map((x) => player(x) ? player(x).name : '?').join(' / ') + ' · CH ' + ch, color: squad(sid) ? squad(sid).color : '#888', ch };
+    });
+  } else {
+    const hc = matchHandicaps(st, r, pairing);
+    units = [...(pairing.teamA || []), ...(pairing.teamB || [])].map((pid) => {
+      const p = player(pid); const ch = hc.byPlayer[pid] || 0;
+      return { name: p ? p.name : '?', sub: teeNameFor(p, r) + ' tee · CH ' + ch, color: p && squad(p.squadId) ? squad(p.squadId).color : '#888', ch };
+    });
+  }
+  const sideNm = (ids) => (ids || []).map((x) => player(x) ? esc(player(x).name) : '?').join('/');
+  const matchName = `Match ${idx + 1}: ${sideNm(pairing.teamA)} vs ${sideNm(pairing.teamB)}`;
+  const rule = ruleHandicap(r);
+  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · ${rule.allowance}% hcp${rule.mode === 'relative' ? ' off low' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
+
+  const sec = (start, end, label) => {
+    let h = `<tr class="ph"><th class="pn">Hole</th>`;
+    for (let i = start; i < end; i++) h += `<th>${i + 1}</th>`;
+    h += `<th>${label}</th></tr>`;
+    let par = `<tr class="pp"><td class="pn">Par</td>`, si = `<tr class="ps"><td class="pn">Hcp</td>`, ps = 0;
+    for (let i = start; i < end; i++) { par += `<td>${holes[i].par}</td>`; si += `<td>${holes[i].si}</td>`; ps += holes[i].par; }
+    par += `<td>${ps}</td>`; si += `<td></td>`;
+    let rows = '';
+    units.forEach((u) => {
+      let row = `<tr><td class="pn nm"><span class="cdot" style="background:${u.color}"></span>${esc(u.name)} <span class="sub">${esc(u.sub)}</span></td>`;
+      for (let i = start; i < end; i++) { const stk = Eng.strokesOnHole(u.ch, holes[i].si, holes.length); row += `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`; }
+      row += `<td></td></tr>`;
+      rows += row;
+    });
+    return h + par + si + rows;
+  };
+  let table = `<table class="pcard">${sec(0, 9, 'Out')}${holes.length > 9 ? sec(9, 18, 'In') : ''}</table>`;
+  return `<div class="print-card">
+    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}</div></div>
+    ${table}
+    <div class="pc-foot">• = handicap stroke received on that hole. Scorer ____________  Att. ____________</div>
+  </div>`;
 }
 
 /* ---------------- "How it works" sheet ---------------- */
@@ -844,6 +914,7 @@ app.addEventListener('click', (e) => {
     theme: () => toggleTheme(),
     boost: () => toggleBoost(),
     share: () => shareLink(),
+    'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
     export: () => doExport(),
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
     'auto-pair': () => autoPair(t.dataset.id),
