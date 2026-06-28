@@ -112,15 +112,14 @@ export function sampleTournament() {
         date: '', status: 'auto', pairings: r2pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r3: {
-        id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'scramble', defaultTeeId: 'tal-blue',
+        id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'shamble', defaultTeeId: 'tal-blue',
         date: '', status: 'auto', pairings: r3pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
     },
     skins: {
-      r1: { enabled: true, mode: 'net', tie: 'rollover', value: 20 },
-      r2: { enabled: true, mode: 'net', tie: 'rollover', value: 20 },
-      // R3 Talamore (scramble/shamble) skins left off — TBD, see notes.
-      r3: { enabled: false, mode: 'net', tie: 'rollover', value: 20 },
+      r1: { enabled: true, mode: 'net', tie: 'rollover', value: 20, allow: 100 },
+      r2: { enabled: true, mode: 'net', tie: 'rollover', value: 20, allow: 100 },
+      r3: { enabled: true, mode: 'net', tie: 'rollover', value: 20, allow: 100 },
     },
     payouts: { potPerPlayer: 20, places: [0.6, 0.3, 0.1] },
     ui: { meId: null },
@@ -132,6 +131,8 @@ export const FORMAT_INFO = {
     explainer: 'You vs one opponent. Low net wins each hole. Win the match to score for your team.' },
   fourball: { label: 'Fourball (Best Ball)', short: '2v2', perSide: 2,
     explainer: 'You and a partner each play your own ball; your better net counts each hole. Win the match to score for your team.' },
+  shamble: { label: 'Shamble (Best Ball)', short: '2v2', perSide: 2,
+    explainer: 'Both partners tee off, play the best drive, then each plays their own ball in — your better net counts each hole. Win the match to score for your team.' },
   scramble: { label: 'Texas Scramble', short: '2v2', perSide: 2,
     explainer: 'You and a partner play one ball from the best shot each time, against the other team\'s scramble. Win the match to score for your team.' },
 };

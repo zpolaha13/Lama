@@ -256,17 +256,15 @@ function roundBoard(rr) {
 /* ---------------- SKINS ---------------- */
 function skinsCfg(rid) {
   const s = (S().skins || {})[rid] || {};
-  return { enabled: !!s.enabled, mode: s.mode || 'net', tie: s.tie || 'rollover', value: s.value || 0 };
+  return { enabled: !!s.enabled, mode: s.mode || 'net', tie: s.tie || 'rollover', value: s.value || 0, allow: s.allow == null ? 100 : s.allow };
 }
 function roundPlayersCH(r) {
   const ids = [];
   (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => { if (!ids.includes(id)) ids.push(id); }));
   const list = ids.filter((id) => player(id));
-  // honor the round's allowance + basis for skins too (relative = off the field's low)
-  const { mode, allowance } = ruleHandicap(r);
-  const eff = list.map((id) => Math.round(chFor(S(), player(id), r) * (allowance / 100)));
-  const shift = (mode === 'relative' && eff.length) ? Math.min(...eff) : 0;
-  return list.map((id, i) => ({ id, name: player(id).name, courseHandicap: eff[i] - shift }));
+  // skins uses its OWN handicap allowance (independent of the match allowance)
+  const allow = skinsCfg(r.id).allow;
+  return list.map((id) => ({ id, name: player(id).name, courseHandicap: Math.round(chFor(S(), player(id), r) * (allow / 100)) }));
 }
 
 /* label for a round's handicap setting, e.g. "Full handicap", "80% off the low" */
@@ -293,8 +291,9 @@ function skinsCard(r) {
   let cfgRow = `<div class="grid2">
     <div class="field"><label>Skins</label><select data-action="skin-enabled" data-rid="${r.id}">${sel(cfg.enabled ? 'on' : 'off', 'on', 'On')}${sel(cfg.enabled ? 'on' : 'off', 'off', 'Off')}</select></div>
     <div class="field"><label>Buy-in / player ($)</label><input type="number" inputmode="numeric" data-action="skin-buyin" data-rid="${r.id}" value="${cfg.value}"></div>
-    <div class="field"><label>Scoring</label><select data-action="skin-mode" data-rid="${r.id}">${sel(cfg.mode, 'net', 'Net')}${sel(cfg.mode, 'gross', 'Gross')}</select></div>
+    <div class="field"><label>Scoring</label><select data-action="skin-mode" data-rid="${r.id}">${sel(cfg.mode, 'net', 'Net (handicap)')}${sel(cfg.mode, 'gross', 'Gross (no strokes)')}</select></div>
     <div class="field"><label>On a tie…</label><select data-action="skin-tie" data-rid="${r.id}">${sel(cfg.tie, 'rollover', 'Roll over (carry)')}${sel(cfg.tie, 'split', 'Split the skin')}</select></div>
+    ${cfg.mode === 'net' ? `<div class="field"><label>Handicap % (curbs high-cap edge)</label><select data-action="skin-allow" data-rid="${r.id}">${[100, 90, 80, 75, 50, 25].map((a) => sel(cfg.allow, a, a + '%' + (a === 100 ? ' (full)' : ''))).join('')}</select></div>` : ''}
   </div>`;
 
   let body = '';
@@ -311,7 +310,7 @@ function skinsCard(r) {
       const w = x.winnerIds.length ? x.winnerIds.map((id) => esc(player(id) ? player(id).name : '?')).join(' + ') : (x.carried ? 'carried' : x.split ? 'split' : '—');
       return `<tr><td class="c">${x.holeIndex + 1}</td><td>${w}</td><td class="c num">${x.value || ''}</td></tr>`;
     }).join('');
-    body = `<div class="tip" style="margin-top:8px">Pot ${Eng.money(pay.pot)} · ${cfg.mode} · ${cfg.tie === 'split' ? 'split ties' : 'rollover'} · ${fmtSkins(res.totalSkins)} skins @ ${Eng.money(pay.perSkin)}${res.leftoverCarry ? ` · ${res.leftoverCarry} carrying` : ''}</div>
+    body = `<div class="tip" style="margin-top:8px">Pot ${Eng.money(pay.pot)} · ${cfg.mode === 'gross' ? 'gross' : 'net ' + cfg.allow + '%'} · ${cfg.tie === 'split' ? 'split ties' : 'rollover'} · ${fmtSkins(res.totalSkins)} skins @ ${Eng.money(pay.perSkin)}${res.leftoverCarry ? ` · ${res.leftoverCarry} carrying` : ''}</div>
       <h3>Winnings</h3>${won}
       <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Hole-by-hole</summary>
         <table style="margin-top:6px"><thead><tr><th class="c">Hole</th><th>Winner</th><th class="c">Skins</th></tr></thead><tbody>${holeRows}</tbody></table>
@@ -882,6 +881,7 @@ app.addEventListener('change', (e) => {
     'skin-mode': () => skinSet(t.dataset.rid, { mode: v }),
     'skin-tie': () => skinSet(t.dataset.rid, { tie: v }),
     'skin-buyin': () => skinSet(t.dataset.rid, { value: Number(v) || 0 }),
+    'skin-allow': () => skinSet(t.dataset.rid, { allow: Number(v) || 100 }),
   };
   if (set[a]) set[a]();
 });
@@ -889,7 +889,7 @@ app.addEventListener('change', (e) => {
 function skinSet(rid, patch) {
   Store.update((s) => {
     s.skins = s.skins || {};
-    s.skins[rid] = Object.assign({ enabled: false, mode: 'net', tie: 'rollover', value: 0 }, s.skins[rid], patch);
+    s.skins[rid] = Object.assign({ enabled: false, mode: 'net', tie: 'rollover', value: 0, allow: 100 }, s.skins[rid], patch);
   });
 }
 function firstTee(s) { for (const cid in s.courses) { const tt = s.courses[cid].tees; const k = tt && Object.keys(tt)[0]; if (k) return k; } return ''; }
