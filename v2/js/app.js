@@ -624,12 +624,12 @@ function setupPlayers() {
   </div>`;
 
   html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
-    <table><thead><tr><th>Name</th><th style="width:54px">Idx</th><th>Team</th><th></th></tr></thead><tbody>
+    <table class="players-tbl"><thead><tr><th>Name</th><th class="c" style="width:52px">Hcp</th><th style="width:96px">Team</th><th style="width:34px"></th></tr></thead><tbody>
     ${Object.entries(st.players).map(([id, p]) => `<tr>
       <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
-      <td><input type="number" step="0.1" data-action="player-index" data-id="${id}" value="${p.index}"></td>
-      <td><select data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
-      <td><button class="btn danger small" data-action="del-player" data-id="${id}">×</button></td>
+      <td><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></td>
+      <td><select class="compact-sel" data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
+      <td><button class="btn danger small icon-x" data-action="del-player" data-id="${id}">×</button></td>
     </tr>`).join('')}
     </tbody></table>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>

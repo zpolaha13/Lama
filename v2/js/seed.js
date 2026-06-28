@@ -97,8 +97,8 @@ export function sampleTournament() {
       countBestNofM: null, roundOrder: ['r1', 'r2', 'r3'],
     },
     squads: {
-      red: { name: 'Team Red', color: '#D0021B' },
-      blue: { name: 'Team Blue', color: '#1B6FB3' },
+      red: { name: 'Red', color: '#D0021B' },
+      blue: { name: 'Blue', color: '#1B6FB3' },
     },
     players,
     courses: { legacy, midsouth, talamore },

@@ -168,6 +168,15 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
 .hcell { width: 46px; text-align: center; padding: 6px 2px; font-size: 14px; }
 .hcell::-webkit-outer-spin-button, .hcell::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
+/* compact players table for narrow phones */
+.players-tbl td, .players-tbl th { padding: 8px 4px; }
+.players-tbl td:first-child, .players-tbl th:first-child { padding-left: 0; }
+.players-tbl input, .players-tbl select { padding: 10px 6px; }
+.hcp-in { text-align: center; -moz-appearance: textfield; }
+.hcp-in::-webkit-outer-spin-button, .hcp-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.compact-sel { padding-right: 2px; }
+.icon-x { width: 34px; padding: 8px 0; text-align: center; }
+
 /* ---------- explainer sheet ---------- */
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
 .sheet { background: var(--bg); width: 100%; max-width: var(--maxw); border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--s5) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(0,0,0,.25); }

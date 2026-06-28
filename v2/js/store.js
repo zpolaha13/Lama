@@ -175,7 +175,7 @@ export function createTournament(opts) {
     init.ui = { meId: null };
   } else {
     init = emptyState();
-    init.squads = { red: { name: 'Team Red', color: '#D0021B' }, blue: { name: 'Team Blue', color: '#1B6FB3' } };
+    init.squads = { red: { name: 'Red', color: '#D0021B' }, blue: { name: 'Blue', color: '#1B6FB3' } };
   }
   init.tournament.name = name;
   init.tournament.id = id;
