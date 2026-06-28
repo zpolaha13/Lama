@@ -1,9 +1,33 @@
-# GHIN auto-fill proxy (optional)
+# Getting Handicap Indexes from GHIN
 
-GHIN has no public API, and a browser can't call GHIN directly (it needs an
-authenticated token and CORS blocks it). This tiny **Cloudflare Worker** logs in
-to GHIN with *your* credentials, looks up a golfer by GHIN number, and returns
-just the handicap index — with the CORS header the app needs.
+GHIN has no public API, and a browser on another site can't call it (CORS +
+auth). Two ways to pull indexes anyway, easiest first.
+
+## Easiest: console lookup (no deploy, no proxy) — `console-lookup.js`
+
+GHIN answers requests that come **from ghin.com** with your logged-in token. So
+run a one-off snippet in a browser tab that's already on ghin.com:
+
+1. Sign in at <https://www.ghin.com> (GHIN # + last name is fine).
+2. DevTools → Console.
+3. Open `console-lookup.js`, paste your players' GHIN numbers into the `GHINS`
+   list at the top, paste the whole snippet into the console, Enter.
+4. It prints a table of **Name → Index** and copies it to your clipboard. Read
+   those into the app's **Hcp** fields. Done — no server, no credentials stored.
+
+This is the recommended path for a once-a-year setup.
+
+## Automatic in-app: the proxy (optional)
+
+If you'd rather the app's **↻ Get** button fill indexes itself, deploy this tiny
+**Cloudflare Worker**. It relays the GHIN lookup server-side (dodging CORS) and
+returns just the index with the CORS header the app needs. Two ways to give it a
+token:
+
+- **Relay a token (no stored credentials):** copy a Bearer token from a
+  logged-in ghin.com tab (valid ~12h) and have the app send it as `?token=...`.
+- **Store credentials:** set `GHIN_USER`/`GHIN_PASSWORD` secrets and it logs in
+  itself (durable, but the login payload is unofficial — see Troubleshooting).
 
 Your GHIN email/password live only as Worker **secrets**; they never reach the
 browser or the repo.

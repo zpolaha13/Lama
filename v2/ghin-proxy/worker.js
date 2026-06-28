@@ -66,9 +66,9 @@ async function login(env) {
 }
 
 async function searchGolfer(token, ghin) {
-  const url = `${GHIN_BASE}/golfers/search.json?per_page=1&page=1&status=Active&golfer_id=${encodeURIComponent(ghin)}`;
-  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
-  return r;
+  // Exact endpoint captured from ghin.com's own network traffic.
+  const url = `${GHIN_BASE}/golfers.json?golfer_id=${encodeURIComponent(ghin)}&status=Active&per_page=1&page=1&source=GHINcom`;
+  return fetch(url, { headers: { Authorization: 'Bearer ' + token, accept: 'application/json' } });
 }
 
 export default {
@@ -82,10 +82,18 @@ export default {
       return new Response(JSON.stringify({ error: 'pass ?ghin=<number>' }), { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } });
     }
 
+    // Relay mode: if the caller passes a token (e.g. one you copied from a
+    // logged-in ghin.com tab — valid ~12h), use it directly and skip login.
+    // This avoids storing GHIN credentials at all. Falls back to login() if no
+    // token is supplied and GHIN_USER/PASSWORD secrets are set.
+    const url0 = new URL(request.url);
+    const relayToken = url0.searchParams.get('token') || (request.headers.get('x-ghin-token') || '');
+
     try {
-      let token = cachedToken || (await login(env));
+      let token = relayToken || cachedToken || (await login(env));
       let r = await searchGolfer(token, ghin);
-      if (r.status === 401) { token = await login(env); r = await searchGolfer(token, ghin); } // token expired -> retry once
+      if (r.status === 401 && !relayToken) { token = await login(env); r = await searchGolfer(token, ghin); } // token expired -> retry once
+      if (r.status === 401 && relayToken) throw new Error('token expired — copy a fresh one from ghin.com');
       if (!r.ok) throw new Error('GHIN search failed (HTTP ' + r.status + ')');
 
       const data = await r.json();
