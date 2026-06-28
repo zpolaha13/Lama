@@ -803,6 +803,12 @@ function printScorecards(rids) {
   let root = document.getElementById('scorecard-print');
   if (!root) { root = document.createElement('div'); root.id = 'scorecard-print'; document.body.appendChild(root); }
   root.innerHTML = pages;
+  // name the PDF/print job after the tournament
+  const prevTitle = document.title;
+  document.title = (S().tournament.name || 'Scorecards').replace(/[\\/:*?"<>|]/g, '');
+  const restore = () => { document.title = prevTitle; };
+  try { window.addEventListener('afterprint', restore, { once: true }); } catch (e) {}
+  setTimeout(restore, 4000);
   try { window.print(); } catch (e) {}
 }
 
@@ -829,23 +835,29 @@ function printCard(r, c, pairing, idx) {
   const rule = ruleHandicap(r);
   const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · ${rule.allowance}% hcp${rule.mode === 'relative' ? ' off low' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
 
-  const sec = (start, end, label) => {
-    let h = `<tr class="ph"><th class="pn">Hole</th>`;
-    for (let i = start; i < end; i++) h += `<th>${i + 1}</th>`;
-    h += `<th>${label}</th></tr>`;
-    let par = `<tr class="pp"><td class="pn">Par</td>`, si = `<tr class="ps"><td class="pn">Hcp</td>`, ps = 0;
-    for (let i = start; i < end; i++) { par += `<td>${holes[i].par}</td>`; si += `<td>${holes[i].si}</td>`; ps += holes[i].par; }
-    par += `<td>${ps}</td>`; si += `<td></td>`;
-    let rows = '';
-    units.forEach((u) => {
-      let row = `<tr><td class="pn nm"><span class="cdot" style="background:${u.color}"></span>${esc(u.name)} <span class="sub">${esc(u.sub)}</span></td>`;
-      for (let i = start; i < end; i++) { const stk = Eng.strokesOnHole(u.ch, holes[i].si, holes.length); row += `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`; }
-      row += `<td></td></tr>`;
-      rows += row;
-    });
-    return h + par + si + rows;
-  };
-  let table = `<table class="pcard">${sec(0, 9, 'Out')}${holes.length > 9 ? sec(9, 18, 'In') : ''}</table>`;
+  // one continuous row of all holes (with Out/In/Tot for 18-hole courses)
+  const N = holes.length;
+  const cols = [];
+  if (N === 18) {
+    for (let i = 0; i < 9; i++) cols.push({ h: i });
+    cols.push({ sum: 'Out', a: 0, b: 9 });
+    for (let i = 9; i < 18; i++) cols.push({ h: i });
+    cols.push({ sum: 'In', a: 9, b: 18 });
+    cols.push({ sum: 'Tot', a: 0, b: 18 });
+  } else {
+    for (let i = 0; i < N; i++) cols.push({ h: i });
+    cols.push({ sum: 'Tot', a: 0, b: N });
+  }
+  const sumPar = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += holes[i].par; return s; };
+  const hdr = `<tr class="ph"><th class="pn">Hole</th>${cols.map((c) => `<th class="${c.sum ? 'sumcol' : ''}">${c.h != null ? c.h + 1 : c.sum}</th>`).join('')}</tr>`;
+  const parR = `<tr class="pp"><td class="pn">Par</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].par : sumPar(c.a, c.b)}</td>`).join('')}</tr>`;
+  const siR = `<tr class="ps"><td class="pn">Hcp</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].si : ''}</td>`).join('')}</tr>`;
+  const rows = units.map((u) => `<tr><td class="pn nm"><span class="cdot" style="background:${u.color}"></span>${esc(u.name)} <span class="sub">${esc(u.sub)}</span></td>${cols.map((c) => {
+    if (c.sum) return '<td class="sumcol"></td>';
+    const stk = Eng.strokesOnHole(u.ch, holes[c.h].si, N);
+    return `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`;
+  }).join('')}</tr>`).join('');
+  let table = `<table class="pcard">${hdr}${parR}${siR}${rows}</table>`;
   return `<div class="print-card">
     <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}</div></div>
     ${table}

@@ -211,21 +211,24 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
   html, body { background: #fff !important; }
   #app, .tabbar, .app-footer { display: none !important; }
   #scorecard-print { display: block !important; color: #000; }
-  @page { size: landscape; margin: 0.35in; }
+  @page { size: landscape; margin: 0.25in; }
   .print-page { page-break-after: always; }
   .print-page:last-child { page-break-after: auto; }
-  .print-card { border: 1.5px solid #111; border-radius: 6px; padding: 7px 9px; margin-bottom: 0.18in; box-sizing: border-box; }
+  .print-card { border: 1.5px solid #111; border-radius: 6px; padding: 6px 8px; margin-bottom: 0.16in; box-sizing: border-box; }
   .pc-head { display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid #bbb; padding-bottom: 3px; margin-bottom: 4px; }
   .pc-title { font-weight: 800; font-size: 13px; }
   .pc-sub { color: #555; font-size: 9.5px; }
   .pc-match { margin-left: auto; font-weight: 700; font-size: 11px; text-align: right; white-space: nowrap; }
   table.pcard { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  table.pcard th, table.pcard td { border: 1px solid #999; text-align: center; font-size: 9px; padding: 0; height: 0.26in; overflow: hidden; }
-  table.pcard .pn { text-align: left; white-space: nowrap; font-weight: 700; padding: 0 4px; width: 1.9in; }
-  table.pcard .nm .sub { font-weight: 400; color: #555; font-size: 8px; }
-  table.pcard .ph th { background: #ececec; font-size: 9px; }
-  table.pcard .pp td, table.pcard .ps td { background: #f5f5f5; color: #555; font-size: 8.5px; height: 0.16in; }
-  .sdot { color: #c00; font-weight: 800; font-size: 8px; letter-spacing: -1px; }
+  table.pcard th, table.pcard td { border: 1px solid #999; text-align: center; font-size: 8.5px; padding: 0; overflow: hidden; }
+  table.pcard .pn { text-align: left; white-space: nowrap; font-weight: 700; padding: 0 4px; width: 1.55in; overflow: hidden; text-overflow: ellipsis; }
+  table.pcard .nm .sub { font-weight: 400; color: #555; font-size: 7.5px; }
+  table.pcard .ph th { background: #ececec; font-size: 8.5px; height: 0.2in; }
+  table.pcard .pp td, table.pcard .ps td { background: #f5f5f5; color: #555; font-size: 8px; height: 0.15in; }
+  table.pcard tr:not(.ph):not(.pp):not(.ps) td { height: 0.34in; }
+  table.pcard td.sumcol, table.pcard th.sumcol { background: #efefef; font-weight: 700; }
+  .cell { position: relative; }
+  .sdot { position: absolute; top: 0; right: 1px; color: #c00; font-weight: 800; font-size: 8px; letter-spacing: -1px; line-height: 1; }
   .cdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
   .pc-foot { font-size: 8px; color: #666; margin-top: 3px; }
 }
