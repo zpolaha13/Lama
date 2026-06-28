@@ -35,6 +35,60 @@ const sdot = (sid) => { const s = squad(sid); return s ? `<span class="dot" styl
 const cPar = (c) => (c && c.holes ? c.holes.reduce((s, h) => s + (Number(h.par) || 0), 0) : 0);
 function teeNameFor(p, r) { const c = course(r.courseId); const tid = resolveTeeId(S(), p, r); const t = c && c.tees ? c.tees[tid] : null; return t ? t.name : ''; }
 
+/* ---------------- DOM morphing (patch instead of replace, so live updates
+ * don't repaint/flicker the whole screen or disturb a field you're using) --- */
+function sameNode(a, b) {
+  if (a.nodeType !== b.nodeType) return false;
+  if (a.nodeType === 1) return a.tagName === b.tagName;
+  return true;
+}
+function morphAttrs(oldN, newN) {
+  const na = newN.attributes;
+  for (let i = 0; i < na.length; i++) { const a = na[i]; if (oldN.getAttribute(a.name) !== a.value) oldN.setAttribute(a.name, a.value); }
+  const oa = oldN.attributes;
+  for (let i = oa.length - 1; i >= 0; i--) { const n = oa[i].name; if (!newN.hasAttribute(n)) oldN.removeAttribute(n); }
+  if (oldN.tagName === 'DETAILS') oldN.open = newN.hasAttribute('open');
+}
+function syncControlValue(oldN, newN, tag) {
+  if (tag === 'SELECT') { morphChildren(oldN, newN); if (oldN.value !== newN.value) oldN.value = newN.value; return; }
+  if (tag === 'TEXTAREA') { const v = newN.value != null ? newN.value : newN.textContent; if (oldN.value !== v) oldN.value = v; return; }
+  const type = (newN.getAttribute('type') || 'text').toLowerCase();
+  if (type === 'checkbox' || type === 'radio') { const c = newN.hasAttribute('checked'); if (oldN.checked !== c) oldN.checked = c; }
+  else { const v = newN.getAttribute('value'); if (v != null && oldN.value !== v) oldN.value = v; }
+}
+function morphNode(oldN, newN) {
+  if (oldN.nodeType === 3 || oldN.nodeType === 8) { if (oldN.nodeValue !== newN.nodeValue) oldN.nodeValue = newN.nodeValue; return; }
+  if (oldN.nodeType !== 1) return;
+  morphAttrs(oldN, newN);
+  const tag = oldN.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    if (document.activeElement !== oldN) syncControlValue(oldN, newN, tag); // never clobber the field you're typing in
+    return;
+  }
+  morphChildren(oldN, newN);
+}
+function morphChildren(oldParent, newParent) {
+  let i = 0;
+  let newNode = newParent.firstChild;
+  while (newNode) {
+    const next = newNode.nextSibling;
+    const oldNode = oldParent.childNodes[i];
+    if (!oldNode) oldParent.appendChild(newNode);
+    else if (sameNode(oldNode, newNode)) morphNode(oldNode, newNode);
+    else oldParent.replaceChild(newNode, oldNode);
+    i++; newNode = next;
+  }
+  while (oldParent.childNodes.length > i) oldParent.removeChild(oldParent.lastChild);
+}
+function applyHTML(html) {
+  // morph only when we have a real DOM; otherwise (tests) fall back to innerHTML
+  if (typeof app.replaceChild === 'function' && document.createElement) {
+    try { const tmp = document.createElement('div'); tmp.innerHTML = html; morphChildren(app, tmp); return; }
+    catch (e) { /* fall back below */ }
+  }
+  app.innerHTML = html;
+}
+
 /* ======================================================================= */
 function render() {
   // remember scroll + which collapsible sections are open, so an edit-driven
@@ -58,7 +112,7 @@ function render() {
       default: body = viewHome();
     }
   }
-  app.innerHTML = hero() + `<div class="screen">${body}</div>` + tabbar() + (ui.sheet ? sheet() : '');
+  applyHTML(hero() + `<div class="screen">${body}</div>` + tabbar() + (ui.sheet ? sheet() : ''));
   if (sy) { try { window.scrollTo(0, sy); } catch (e) {} }
 }
 
