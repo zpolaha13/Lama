@@ -196,16 +196,25 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
 .hcell { width: 46px; text-align: center; padding: 6px 2px; font-size: 14px; }
 .hcell::-webkit-outer-spin-button, .hcell::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* compact players table for narrow phones */
-.players-tbl td, .players-tbl th { padding: 8px 4px; }
-.players-tbl td:first-child, .players-tbl th:first-child { padding-left: 0; }
-.players-tbl input, .players-tbl select { padding: 10px 6px; }
 .hcp-in { text-align: center; -moz-appearance: textfield; }
 .hcp-in::-webkit-outer-spin-button, .hcp-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .compact-sel { padding-right: 2px; }
-.ghin-cell { display: flex; align-items: center; gap: 2px; }
-.ghin-cell .ghin-in { width: 100%; min-width: 0; text-align: center; padding: 10px 2px; }
-.ghin-cell button { flex: none; padding: 6px 4px; line-height: 1; }
+/* player cards (roomier than the old cramped table) */
+.psort { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.psort .seg-btn { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink); cursor: pointer; }
+.psort .seg-btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+.pcard { border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px; margin-bottom: 8px; background: var(--surface); }
+.pcard-r1 { display: flex; align-items: center; gap: 8px; }
+.pcard-r1 .dot { flex: none; }
+.pcard-r1 .pc-name { flex: 1; min-width: 0; font-weight: 700; }
+.pcard-r1 .compact-sel { flex: none; width: 88px; }
+.pcard-r2 { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+.pcard-r2 .pf { display: flex; flex-direction: column; gap: 3px; }
+.pcard-r2 .pf label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.pcard-r2 .pf .hcp-in { width: 72px; text-align: center; }
+.pcard-r2 .pf-ghin { flex: 1; min-width: 0; }
+.pcard-r2 .pf-ghin .ghin-in { width: 100%; min-width: 0; }
+.pcard-r2 .ghin-btn { flex: none; white-space: nowrap; }
 .icon-x { width: 34px; padding: 8px 0; text-align: center; }
 
 /* ---------- explainer sheet ---------- */

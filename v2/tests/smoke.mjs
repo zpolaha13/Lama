@@ -87,7 +87,7 @@ fireClick({ action: 'tab', tab: 'setup' }); check('setup');
 // players sort headers + GHIN field/lookup
 fireClick({ action: 'setup-tab', tab: 'players' });
 fireChange({ action: 'player-ghin', id: 'parker' }, '1234567');
-fireClick({ action: 'ghin-lookup', id: 'parker' }); check('ghin');
+fireClick({ action: 'ghin-refresh', id: 'parker' }); check('ghin');
 ['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
 check('players-sorted');
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');

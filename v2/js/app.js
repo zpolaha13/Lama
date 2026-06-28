@@ -5,14 +5,14 @@
  * (no text-focus to preserve), so full re-render is safe and simple.
  * ========================================================================= */
 import * as Store from './store.js';
-import { isFirebaseConfigured } from './config.js';
+import { isFirebaseConfigured, GHIN_PROXY_URL } from './config.js';
 import * as Eng from './engine/golf.js';
 import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set(), importAsNew: false };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set(), importAsNew: false, ghinLoading: {} };
 let heroCompact = false;
 
 /* ---------------- helpers ---------------- */
@@ -741,22 +741,27 @@ function setupPlayers() {
     return (a.name || '').localeCompare(b.name || '') * sort.dir;
   });
   const caret = (k) => (sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+  const sortBtn = (k, label) => `<button class="seg-btn ${sort.key === k ? 'active' : ''}" data-action="sort-players" data-key="${k}">${label}${caret(k)}</button>`;
+  const auto = !!GHIN_PROXY_URL;
+  const loadingMap = ui.ghinLoading || {};
   html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
-    <table class="players-tbl"><thead><tr>
-      <th data-action="sort-players" data-key="name" style="cursor:pointer">Name${caret('name')}</th>
-      <th class="c" data-action="sort-players" data-key="index" style="width:52px;cursor:pointer">Hcp${caret('index')}</th>
-      <th class="c" style="width:104px">GHIN</th>
-      <th data-action="sort-players" data-key="team" style="width:92px;cursor:pointer">Team${caret('team')}</th>
-      <th style="width:34px"></th></tr></thead><tbody>
-    ${entries.map(([id, p]) => `<tr>
-      <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
-      <td><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></td>
-      <td><div class="ghin-cell"><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"><button class="btn secondary small icon-x" data-action="ghin-lookup" data-id="${id}" title="Copy GHIN # and open the lookup">🔍</button></div></td>
-      <td><select class="compact-sel" data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
-      <td><button class="btn danger small icon-x" data-action="del-player" data-id="${id}">×</button></td>
-    </tr>`).join('')}
-    </tbody></table>
-    <div class="muted" style="font-size:12px;margin-top:6px">GHIN # is optional. Tap 🔍 to copy it &amp; open GHIN's lookup, then read the player's Index into the <b>Hcp</b> column. (GHIN has no public API, so the index can't auto-fill.)</div>
+    <div class="psort">Sort ${sortBtn('name', 'Name')}${sortBtn('index', 'Hcp')}${sortBtn('team', 'Team')}</div>
+    ${entries.map(([id, p]) => { const sc = squad(p.squadId); const busy = !!loadingMap[id]; return `<div class="pcard">
+      <div class="pcard-r1">
+        <span class="dot" style="background:${sc ? (sc.color || '#1B7A3D') : '#888'}"></span>
+        <input class="pc-name" data-action="player-name" data-id="${id}" value="${esc(p.name)}">
+        <select class="compact-sel" data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select>
+        <button class="btn danger small icon-x" data-action="del-player" data-id="${id}">×</button>
+      </div>
+      <div class="pcard-r2">
+        <div class="pf"><label>Index</label><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></div>
+        <div class="pf pf-ghin"><label>GHIN #</label><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"></div>
+        <button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="${auto ? 'Fetch handicap index from GHIN' : 'Copy GHIN # and open the lookup'}">${busy ? '…' : (auto ? '↻ Get' : '🔍 Look up')}</button>
+      </div>
+    </div>`; }).join('')}
+    <div class="muted" style="font-size:12px;margin-top:4px">${auto
+      ? 'Tap <b>↻ Get</b> to pull the Index from GHIN by number. You can still edit any Index by hand.'
+      : 'GHIN # is optional. <b>🔍 Look up</b> copies the number &amp; opens GHIN\'s lookup so you can type the Index in. (Set up the proxy in <b>ghin-proxy/</b> to auto-fill.)'}</div>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
   return html;
@@ -995,7 +1000,7 @@ app.addEventListener('click', (e) => {
     'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
     export: () => doExport(),
     'import-json': () => doImportJSON(),
-    'ghin-lookup': () => ghinLookup(t.dataset.id),
+    'ghin-refresh': () => ghinRefresh(t.dataset.id),
     'csv-template': () => doCsvTemplate(),
     'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
@@ -1153,13 +1158,42 @@ function doExport() {
 
 function slugName(s) { return (s || 'golf-trip').replace(/\s+/g, '-').toLowerCase(); }
 
-// Open GHIN's public golfer lookup, copying this player's GHIN # so they can
-// paste it into the search. GHIN has no open API, so this is the manual path.
-function ghinLookup(id) {
-  const p = player(id);
-  const num = p && p.ghin ? String(p.ghin).replace(/[^0-9]/g, '') : '';
+// Reliable new-tab open (window.open with a features string gets popup-blocked
+// on mobile Safari; a synthesized anchor click from the gesture does not).
+function openTab(url) {
+  try {
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { try { window.open(url, '_blank'); } catch (e2) {} }
+}
+
+// Open GHIN's public golfer lookup, copying this player's GHIN # to paste in.
+function openGhinLookup(num) {
   try { if (num && typeof navigator !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText(num); } catch (e) {}
-  try { window.open('https://www.ghin.com/lookup', '_blank', 'noopener'); } catch (e) {}
+  openTab('https://www.ghin.com/lookup');
+}
+
+// Auto-fill a player's Index from GHIN via the configured proxy. With no proxy
+// set, fall back to opening the manual lookup. The Index stays editable either way.
+function ghinRefresh(id) {
+  const p = player(id); if (!p) return;
+  const num = String(p.ghin || '').replace(/[^0-9]/g, '');
+  if (!GHIN_PROXY_URL) { openGhinLookup(num); return; }
+  if (!num) { alert('Enter a GHIN number for this player first.'); return; }
+  ui.ghinLoading = ui.ghinLoading || {};
+  ui.ghinLoading[id] = true; render();
+  const done = () => { if (ui.ghinLoading) delete ui.ghinLoading[id]; render(); };
+  const url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + 'ghin=' + encodeURIComponent(num);
+  fetch(url)
+    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then((data) => {
+      const idx = Number(data && (data.index != null ? data.index : data.handicap_index));
+      if (isNaN(idx)) throw new Error('No index in the response');
+      Store.update((s) => { if (s.players[id]) s.players[id].index = idx; });
+    })
+    .catch((e) => alert('Couldn\'t fetch from GHIN: ' + e.message + '\n\nCheck the GHIN number and that your proxy is reachable.'))
+    .then(done, done);
 }
 
 function doImportJSON() {

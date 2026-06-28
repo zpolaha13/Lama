@@ -36,3 +36,10 @@ export const DEFAULT_TRIP_ID = 'guys-golf-trip-2026';
 export function isFirebaseConfigured() {
   return !!firebaseConfig.databaseURL && !firebaseConfig.databaseURL.includes('REPLACE_ME');
 }
+
+/* GHIN auto-fill (optional). GHIN has no public API and can't be called from a
+ * browser (auth + CORS), so to auto-fill handicap indexes you deploy the tiny
+ * proxy in /ghin-proxy (Cloudflare Worker) with your GHIN login, then paste its
+ * URL here. The app GETs `${GHIN_PROXY_URL}?ghin=NUMBER` and expects JSON like
+ * { "index": 8.4, "name": "..." }. Leave blank to keep manual lookup only. */
+export const GHIN_PROXY_URL = '';
