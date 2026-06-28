@@ -12,6 +12,7 @@ import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
 const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set() };
+let heroCompact = false;
 
 /* ---------------- helpers ---------------- */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -41,7 +42,7 @@ function render() {
   try { sy = window.scrollY || document.documentElement.scrollTop || 0; } catch (e) {}
   try { app.querySelectorAll('details[data-dk]').forEach((d) => { if (d.open) ui.openDetails.add(d.dataset.dk); else ui.openDetails.delete(d.dataset.dk); }); } catch (e) {}
 
-  document.getElementById('tripName') && (document.getElementById('tripName').textContent = S().tournament.name);
+  try { document.title = S().tournament.name || 'Golf Trip'; } catch (e) {}
   let body;
   if (!hasData() && ui.view !== 'setup') body = viewEmpty();
   else {
@@ -61,34 +62,35 @@ function render() {
 }
 
 /* ---------------- Cup hero header ---------------- */
+function heroActions() {
+  return `<div class="hero-actions">
+    ${hasData() && Store.isOnline() ? '<button class="icon-btn" data-action="share" title="Share live link">⇪</button>' : ''}
+    ${hasData() ? '<button class="icon-btn" data-action="sheet" data-sheet="how" title="How it works">?</button>' : ''}
+    <button class="icon-btn" data-action="boost" title="Sunlight boost">☀</button>
+    <button class="icon-btn" data-action="theme" title="Theme">◐</button>
+  </div>`;
+}
 function hero() {
   const st = S();
+  const name = esc(st.tournament.name || 'Golf Trip');
   if (!hasData()) {
-    return `<div class="hero"><div class="hero-top"><span class="hero-title">${esc(st.tournament.name || 'Golf Trip')}</span>
-      <div class="hero-actions"><button class="icon-btn" data-action="theme" title="Theme">◐</button></div></div></div>`;
+    return `<div class="hero"><div class="hero-top"><span class="hero-title">${name}</span>${heroActions()}</div></div>`;
   }
   const stand = computeStandings(st);
   const ids = squadIds();
   const a = ids[0], b = ids[1];
   const sa = squad(a), sb = squad(b);
   const clinchBadge = stand.clinched ? `<div class="center"><span class="clinch">🏆 ${esc(squad(stand.clinched).name)} clinched</span></div>` : '';
+  const center = `<div class="cup-mid"><div class="hero-name">${name}</div><div class="target num">first to ${stand.target}</div></div>`;
   const two = b
     ? `<div class="cup">
         <div class="cup-side"><div class="pts num">${stand.cup[a] ?? 0}</div><div class="nm">${sdot(a)}${esc(sa.name)}</div></div>
-        <div class="cup-mid"><div class="vs">CUP</div><div class="target num">to ${stand.target}</div></div>
+        ${center}
         <div class="cup-side"><div class="pts num">${stand.cup[b] ?? 0}</div><div class="nm">${esc(sb.name)}${sdot(b)}</div></div>
        </div>`
-    : `<div class="cup"><div class="cup-side"><div class="pts num">${stand.cup[a] ?? 0}</div><div class="nm">${esc(sa.name)}</div></div></div>`;
-  return `<div class="hero">
-    <div class="hero-top">
-      <span class="hero-title">${esc(st.tournament.name)}</span>
-      <div class="hero-actions">
-        ${Store.isOnline() ? '<button class="icon-btn" data-action="share" title="Share live link">⇪</button>' : ''}
-        <button class="icon-btn" data-action="sheet" data-sheet="how" title="How it works">?</button>
-        <button class="icon-btn" data-action="boost" title="Sunlight boost">☀</button>
-        <button class="icon-btn" data-action="theme" title="Theme">◐</button>
-      </div>
-    </div>
+    : `<div class="cup">${center}<div class="cup-side"><div class="pts num">${stand.cup[a] ?? 0}</div><div class="nm">${esc(sa.name)}</div></div></div>`;
+  return `<div class="hero ${heroCompact ? 'hero-compact' : ''}">
+    <div class="hero-top">${heroActions()}</div>
     ${two}${clinchBadge}
     <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
   </div>`;
@@ -693,13 +695,14 @@ function viewSetup() {
 function setupTournament() {
   const st = S();
   const stand = computeStandings(st);
-  return tournamentsCard() + `<div class="card"><h2>This trip</h2>
+  const normalized = st.tournament.weightMode === 'normalized';
+  return tournamentsCard() + `<div class="card"><h2>Tournament</h2>
     <div class="field"><label>Name</label><input data-action="trip-name" value="${esc(st.tournament.name)}"></div>
-    <div class="grid2">
-      <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${st.tournament.weightMode !== 'normalized' ? 'selected' : ''}>True points</option><option value="normalized" ${st.tournament.weightMode === 'normalized' ? 'selected' : ''}>Equal-weight rounds</option></select></div>
-      <div class="field"><label>Equal-weight target</label><input type="number" data-action="set-normtarget" value="${st.tournament.normalizeTarget}"></div>
+    <div class="${normalized ? 'grid2' : ''}">
+      <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${!normalized ? 'selected' : ''}>True points</option><option value="normalized" ${normalized ? 'selected' : ''}>Equal-weight rounds</option></select></div>
+      ${normalized ? `<div class="field"><label>Points each round is worth</label><input type="number" data-action="set-normtarget" value="${st.tournament.normalizeTarget}"></div>` : ''}
     </div>
-    <div class="tip" style="margin-top:4px"><b>Target to win: ${stand.target}</b> (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value; "Equal-weight" makes every round worth the same. Leave on <b>True points</b> if unsure.</div>
+    <div class="tip" style="margin-top:4px"><b>First to ${stand.target}</b> wins (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value; "Equal-weight" makes every round worth the same toward the Cup. Leave on <b>True points</b> if unsure.</div>
   </div>`;
 }
 
@@ -1110,14 +1113,26 @@ try {
 // mid-edit in a text field so a remote update doesn't steal focus.
 let renderDirty = false;
 function isEditingText() {
-  // only text/number inputs need protection from focus-stealing re-renders;
-  // selects commit on choice, so let them re-render immediately
+  // Protect any focused form control from focus-stealing re-renders. Selects
+  // matter too: a live remote update mid-render destroys an open native
+  // dropdown before the user can pick, so defer while a <select> is focused.
   const ae = document.activeElement;
-  return ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+  return ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA');
 }
 Store.subscribe(() => { if (isEditingText()) { renderDirty = true; return; } render(); });
 if (document.addEventListener) {
   document.addEventListener('focusout', () => { if (renderDirty) { renderDirty = false; setTimeout(render, 0); } });
 }
+// shrink the hero once you scroll down a page
+try {
+  window.addEventListener('scroll', () => {
+    const c = (window.scrollY || document.documentElement.scrollTop || 0) > 36;
+    if (c !== heroCompact) {
+      heroCompact = c;
+      const h = app.querySelector('.hero');
+      if (h) h.classList.toggle('hero-compact', c);
+    }
+  }, { passive: true });
+} catch (e) {}
 Store.init();
 render();
