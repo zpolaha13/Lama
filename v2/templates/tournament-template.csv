@@ -1,6 +1,6 @@
 #TOURNAMENT
-name,winPoints,tiePoints,joinCode
-Lama Palooza 2026,1,0.5,REDBL
+name,winPoints,tiePoints,joinCode,weightMode,pointsPerRound
+Lama Palooza 2026,1,0.5,REDBL,true,4
 
 #SQUADS
 id,name,color
@@ -21,6 +21,10 @@ Ty,11,blue,
 Townsley,12,blue,
 Mitchy,20,blue,
 Blake,22,blue,
+
+#PAYOUTS
+potPerPlayer,place1,place2,place3
+20,0.6,0.3,0.1
 
 #COURSES
 courseId,courseName,teeName,rating,slope
@@ -98,10 +102,10 @@ talamore,17,4,11
 talamore,18,4,3
 
 #ROUNDS
-roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue
-r1,Round 1 — Legacy,legacy,singles,Blue,75,absolute,20
-r2,Round 2 — Mid South,midsouth,fourball,Blue,75,absolute,20
-r3,Round 3 — Talamore,talamore,shamble,Blue,75,absolute,20
+roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue,skinsMode,skinsTie,date
+r1,Round 1 — Legacy,legacy,singles,Blue,75,absolute,20,net,rollover,
+r2,Round 2 — Mid South,midsouth,fourball,Blue,75,absolute,20,net,rollover,
+r3,Round 3 — Talamore,talamore,shamble,Blue,75,absolute,20,net,rollover,
 
 #PAIRINGS
 roundId,teamA,teamB

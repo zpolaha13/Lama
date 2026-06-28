@@ -218,5 +218,27 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   eq(back.rounds.r2.pairings.length, 3, 'csv: fourball pairing count');
 }
 
+// CSV preserves the fields that used to reset to defaults
+{
+  const o = sampleTournament();
+  o.tournament.weightMode = 'normalized'; o.tournament.normalizeTarget = 6;
+  o.skins.r2.mode = 'gross'; o.skins.r2.tie = 'split';
+  const w = [];
+  const b = fromCSV(toCSV(o), w);
+  eq(b.tournament.weightMode, 'normalized', 'csv: weightMode preserved');
+  eq(b.tournament.normalizeTarget, 6, 'csv: pointsPerRound preserved');
+  eq(b.skins.r2.mode, 'gross', 'csv: skins mode preserved');
+  eq(b.skins.r2.tie, 'split', 'csv: skins tie preserved');
+  eq(b.payouts.potPerPlayer, 20, 'csv: payouts pot preserved');
+  eq(w.length, 0, 'csv: clean round-trip has no warnings');
+  // BOM (Excel) must not eat the first section
+  eq(fromCSV('﻿' + toCSV(o)).tournament.name, o.tournament.name, 'csv: BOM stripped');
+  // non-hex color sanitized; unknown pairing name warns
+  const w2 = [];
+  const bad = fromCSV('#SQUADS\nid,name,color\nred,Red,"#fff;<img>"\n#PLAYERS\nname,index,squad\nAl,5,red\n#PAIRINGS\nroundId,teamA,teamB\nr1,Al,Bob', w2);
+  eq(bad.squads.red.color, '#888', 'csv: unsafe color rejected');
+  eq(w2.length, 1, 'csv: unknown pairing name produces a warning');
+}
+
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

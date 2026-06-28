@@ -7,13 +7,9 @@
 import { uid } from './store.js';
 
 export function sampleTournament() {
-  const holePar = [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 4, 5];
-  const holeSI = [7, 3, 17, 1, 11, 5, 15, 9, 13, 8, 2, 16, 4, 10, 6, 18, 12, 14];
-  const holes = () => holePar.map((par, i) => ({ par, si: holeSI[i] }));
-
   // All three courses from the official Talamore Golf Resort website scorecards
   // (men's tees, par, and men's handicap row). Each HCP row validated as a clean
-  // 1-18 permutation (even front / odd back). Default tee per round is Blue.
+  // 1-18 permutation. Default tee per round is Blue.
   // Note: the printed cards have swapped course logos and a couple of obvious
   // par/yardage typos on Legacy holes 16/18 — par there follows the yardage
   // (hole 18 is the long par 5). Stroke index is taken exactly as printed.

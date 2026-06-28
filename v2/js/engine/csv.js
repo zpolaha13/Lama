@@ -35,9 +35,15 @@ function parseLine(line) {
   return out.map((s) => s.trim());
 }
 
+function safeColor(c) {
+  // colors land in style="" attributes, so only allow hex; reject anything else
+  return /^#[0-9a-fA-F]{3,8}$/.test(String(c || '').trim()) ? c.trim() : '#888';
+}
+
 function splitSections(text) {
+  text = String(text).replace(/^﻿/, ''); // strip UTF-8 BOM (Excel adds one)
   const sections = {}; let cur = null; let header = null;
-  String(text).split(/\r?\n/).forEach((raw) => {
+  text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
     if (line.startsWith('#')) { cur = line.slice(1).trim().toUpperCase(); sections[cur] = []; header = null; return; }
@@ -51,7 +57,8 @@ function splitSections(text) {
   return sections;
 }
 
-export function fromCSV(text) {
+export function fromCSV(text, warnings) {
+  warnings = warnings || [];
   const S = splitSections(text);
   const st = emptyState();
   st.tournament.roundOrder = [];
@@ -62,19 +69,29 @@ export function fromCSV(text) {
     if (T.winPoints !== '' && T.winPoints != null) st.tournament.winPoints = Number(T.winPoints) || 1;
     if (T.tiePoints !== '' && T.tiePoints != null) st.tournament.tiePoints = Number(T.tiePoints);
     if (T.joinCode) st.tournament.joinCode = T.joinCode;
+    if (T.weightMode) st.tournament.weightMode = (T.weightMode.toLowerCase() === 'normalized' || T.weightMode.toLowerCase() === 'equal') ? 'normalized' : 'true';
+    if (T.pointsPerRound !== '' && T.pointsPerRound != null) st.tournament.normalizeTarget = Number(T.pointsPerRound) || 4;
   }
   st.tournament.id = slug(st.tournament.name);
 
   (S.SQUADS || []).forEach((r) => {
     const id = slug(r.id || r.name);
-    st.squads[id] = { name: r.name || id, color: r.color || '#888' };
+    st.squads[id] = { name: r.name || id, color: safeColor(r.color) };
   });
 
   (S.PLAYERS || []).forEach((r) => {
     if (!r.name && !r.id) return;
     const id = slug(r.id || r.name);
+    if (st.players[id]) warnings.push('Two players map to the same id "' + id + '" (' + (r.name || r.id) + ') — the later one wins. Use distinct names or an id column.');
     st.players[id] = { id, name: r.name || id, index: Number(r.index) || 0, squadId: r.squad ? slug(r.squad) : (Object.keys(st.squads)[0] || ''), defaultTeeId: r.defaultTee || '' };
   });
+
+  // payouts
+  const P = (S.PAYOUTS || [])[0];
+  if (P) {
+    const places = [P.place1, P.place2, P.place3].map(Number).filter((x) => !isNaN(x));
+    st.payouts = { potPerPlayer: Number(P.potPerPlayer) || 0, places: places.length ? places : [0.6, 0.3, 0.1] };
+  }
 
   // courses + tees; remember name→id so rounds can reference a tee by name
   const teeByName = {}; // `${cid}|${teeNameLower}` → teeId
@@ -120,16 +137,22 @@ export function fromCSV(text) {
     };
     st.tournament.roundOrder.push(rid);
     const val = Number(r.skinsValue || r.skins || 0);
-    st.skins[rid] = { enabled: val > 0, mode: 'net', tie: 'rollover', value: val || 0, allow: 100 };
+    const mode = String(r.skinsMode || 'net').toLowerCase() === 'gross' ? 'gross' : 'net';
+    const tie = String(r.skinsTie || 'rollover').toLowerCase() === 'split' ? 'split' : 'rollover';
+    st.skins[rid] = { enabled: val > 0, mode, tie, value: val || 0, allow: 100 };
   });
 
   // pairings — accept player names or ids, separated by | ; / or ,
   const nameToId = {};
   Object.values(st.players).forEach((p) => { nameToId[p.name.toLowerCase()] = p.id; nameToId[p.id.toLowerCase()] = p.id; });
-  const toIds = (cell) => String(cell || '').split(/[|;/]+/).map((x) => x.trim()).filter(Boolean).map((x) => nameToId[x.toLowerCase()] || slug(x));
+  const toIds = (cell) => String(cell || '').split(/[|;/]+/).map((x) => x.trim()).filter(Boolean).map((x) => {
+    const hit = nameToId[x.toLowerCase()];
+    if (!hit) warnings.push('Pairing references "' + x + '", which is not a player in the file.');
+    return hit || slug(x);
+  });
   (S.PAIRINGS || []).forEach((r) => {
     const rid = slug(r.roundId); const rd = st.rounds[rid];
-    if (!rd) return;
+    if (!rd) { if (r.roundId) warnings.push('Pairing for unknown round "' + r.roundId + '" was skipped.'); return; }
     rd.pairings.push({ id: uid('m'), teamA: toIds(r.teamA), teamB: toIds(r.teamB) });
   });
 
@@ -155,8 +178,8 @@ export function toCSV(st) {
   const row = (cells) => L.push(cells.map(q).join(','));
   const order = (st.tournament.roundOrder && st.tournament.roundOrder.length) ? st.tournament.roundOrder : Object.keys(st.rounds);
 
-  L.push('#TOURNAMENT'); L.push('name,winPoints,tiePoints,joinCode');
-  row([st.tournament.name, st.tournament.winPoints, st.tournament.tiePoints, st.tournament.joinCode]);
+  L.push('#TOURNAMENT'); L.push('name,winPoints,tiePoints,joinCode,weightMode,pointsPerRound');
+  row([st.tournament.name, st.tournament.winPoints, st.tournament.tiePoints, st.tournament.joinCode, st.tournament.weightMode || 'true', st.tournament.normalizeTarget != null ? st.tournament.normalizeTarget : 4]);
   L.push('');
 
   L.push('#SQUADS'); L.push('id,name,color');
@@ -164,7 +187,12 @@ export function toCSV(st) {
   L.push('');
 
   L.push('#PLAYERS'); L.push('name,index,squad,defaultTee');
-  Object.values(st.players).forEach((p) => row([p.name, p.index, p.squadId, '']));
+  Object.values(st.players).forEach((p) => row([p.name, p.index, p.squadId, p.defaultTeeId || '']));
+  L.push('');
+
+  const pay = st.payouts || {};
+  L.push('#PAYOUTS'); L.push('potPerPlayer,place1,place2,place3');
+  row([pay.potPerPlayer || 0, (pay.places || [])[0] || '', (pay.places || [])[1] || '', (pay.places || [])[2] || '']);
   L.push('');
 
   L.push('#COURSES'); L.push('courseId,courseName,teeName,rating,slope');
@@ -175,11 +203,11 @@ export function toCSV(st) {
   Object.values(st.courses).forEach((c) => (c.holes || []).forEach((h, i) => row([c.id, i + 1, h.par, h.si])));
   L.push('');
 
-  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue');
+  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue,skinsMode,skinsTie,date');
   order.forEach((rid) => {
     const r = st.rounds[rid]; if (!r) return;
     const sk = st.skins[rid] || {};
-    row([rid, r.name, r.courseId, r.format, teeName(st, r.courseId, r.defaultTeeId), (r.scoringRule || {}).handicapAllowance, (r.scoringRule || {}).handicapMode, sk.enabled ? sk.value : 0]);
+    row([rid, r.name, r.courseId, r.format, teeName(st, r.courseId, r.defaultTeeId), (r.scoringRule || {}).handicapAllowance, (r.scoringRule || {}).handicapMode, sk.enabled ? sk.value : 0, sk.mode || 'net', sk.tie || 'rollover', r.date || '']);
   });
   L.push('');
 

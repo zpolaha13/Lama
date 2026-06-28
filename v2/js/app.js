@@ -156,8 +156,10 @@ function actionCard(stand) {
       const r = round(target.roundId);
       const myPairing = (r.pairings || []).find((p) => (p.teamA || []).includes(me.id) || (p.teamB || []).includes(me.id));
       if (myPairing) {
-        const oppIds = (myPairing.teamA.includes(me.id) ? myPairing.teamB : myPairing.teamA);
-        const partnerIds = (myPairing.teamA.includes(me.id) ? myPairing.teamA : myPairing.teamB).filter((x) => x !== me.id);
+        const tA = myPairing.teamA || [], tB = myPairing.teamB || [];
+        const onA = tA.includes(me.id);
+        const oppIds = onA ? tB : tA;
+        const partnerIds = (onA ? tA : tB).filter((x) => x !== me.id);
         const names = (ids) => ids.map((x) => esc(player(x) ? player(x).name : '?')).join(' & ');
         lbl = target.status === 'live' ? 'Live now' : 'Up next';
         msg = `${esc(r.name)} — ${fmtInfo(r.format).short}` + (partnerIds.length ? `<br>You + ${names(partnerIds)} vs ${names(oppIds)}` : `<br>You vs ${names(oppIds)}`);
@@ -292,6 +294,9 @@ function computeRoundSkins(r) {
   const cfg = skinsCfg(r.id);
   const c = course(r.courseId);
   const players = roundPlayersCH(r);
+  if (!c || !c.holes) {
+    return { cfg, players, res: { results: [], skinsByPlayer: {}, totalSkins: 0, leftoverCarry: 0 }, pay: { pot: 0, perSkin: 0, payouts: {} } };
+  }
   const res = Eng.computeSkins(players, c.holes, (pid, h) => getScore(r, pid, h), { mode: cfg.mode, tie: cfg.tie });
   const pay = Eng.skinsPayouts(cfg.value, players, res.skinsByPlayer, res.totalSkins);
   return { cfg, players, res, pay };
@@ -400,7 +405,7 @@ function viewScore() {
       return unitRow({ rid: r.id, target: `team:${pairing.id}:${side}`, name: (squad(sid) ? squad(sid).name : side) + ' — ' + ids.map((x) => player(x) ? player(x).name : '?').join(' / '), sdotId: sid, ch, val, hole, holes: c.holes.length });
     }).join('');
   } else {
-    const ids = [...pairing.teamA, ...pairing.teamB];
+    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
     const hc = matchHandicaps(S(), r, pairing);
     units = ids.map((pid) => {
       const p = player(pid);
@@ -470,7 +475,7 @@ function scoreCard(r, pairing, c) {
     });
   } else {
     const hc = matchHandicaps(S(), r, pairing);
-    units = [...pairing.teamA, ...pairing.teamB].map((pid) => {
+    units = [...(pairing.teamA || []), ...(pairing.teamB || [])].map((pid) => {
       const p = player(pid);
       return { name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h) };
     });
@@ -539,8 +544,8 @@ function viewMyCard() {
     const rr = resolveRound(st, r);
     const mine = rr.matches.find((m) => (m.pairing.teamA || []).includes(me.id) || (m.pairing.teamB || []).includes(me.id));
     if (!mine) return '';
-    const onA = mine.pairing.teamA.includes(me.id);
-    const oppIds = onA ? mine.pairing.teamB : mine.pairing.teamA;
+    const onA = (mine.pairing.teamA || []).includes(me.id);
+    const oppIds = (onA ? mine.pairing.teamB : mine.pairing.teamA) || [];
     const sa = squad(mine.squadA), sb = squad(mine.squadB);
     const tag = Eng.matchTag(mine.m, sa ? sa.name.replace('Team ', '') : 'A', sb ? sb.name.replace('Team ', '') : 'B');
     const line = playerRoundLine(st, r, me.id);
@@ -1124,6 +1129,7 @@ function doImportJSON() {
     const file = input.files && input.files[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => alert('Could not read that file.');
     reader.onload = () => {
       let next;
       try { next = JSON.parse(String(reader.result)); }
@@ -1148,24 +1154,26 @@ function doCsvImport(input) {
   const file = input && input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
+  reader.onerror = () => { alert('Could not read that file.'); input.value = ''; };
   reader.onload = () => {
-    let next;
-    try { next = fromCSV(String(reader.result)); }
+    let next; const warnings = [];
+    try { next = fromCSV(String(reader.result), warnings); }
     catch (err) { alert('Could not read that CSV.\n\n' + err.message); input.value = ''; return; }
     input.value = '';
-    finishImport(next, (next.tournament && next.tournament.name) || 'tournament');
+    finishImport(next, (next.tournament && next.tournament.name) || 'tournament', warnings);
   };
   reader.readAsText(file);
 }
 
 // Land an imported tournament either over the current one or as a brand-new
 // tournament you can switch between, based on the "Import as new" toggle.
-function finishImport(next, name) {
+function finishImport(next, name, warnings) {
   const np = Object.keys(next.players || {}).length;
   const nr = Object.keys(next.rounds || {}).length;
   const asNew = ui.importAsNew;
   const where = asNew ? 'as a NEW tournament (keeping the current one)' : 'over the current tournament "' + (S().tournament.name || '') + '" (replaces its data)';
-  if (!confirm('Import "' + name + '" — ' + np + ' players, ' + nr + ' rounds — ' + where + '?')) return;
+  const warn = (warnings && warnings.length) ? '\n\n⚠ ' + warnings.length + ' warning(s):\n• ' + warnings.slice(0, 8).join('\n• ') + (warnings.length > 8 ? '\n• …' : '') : '';
+  if (!confirm('Import "' + name + '" — ' + np + ' players, ' + nr + ' rounds — ' + where + '?' + warn)) return;
   if (asNew) Store.createTournament({ name, mode: 'import', data: next });
   else Store.importJSON(JSON.stringify(next));
   ui.view = 'home';

@@ -142,6 +142,10 @@ export function resolveRound(state, round) {
   (round.pairings || []).forEach((pairing) => {
     const res = resolvePairingMatch(state, round, pairing);
     if (!res) return;
+    // A pairing whose sides don't resolve to two distinct real squads can't
+    // award points to anyone — skip it so it doesn't leak into a phantom
+    // "null" squad and deflate everyone's normalized share / the target.
+    if (!res.squadA || !res.squadB || res.squadA === res.squadB) return;
     pointsAvailable += win;
     if (res.m.result === 'A') raw[res.squadA] = (raw[res.squadA] || 0) + win;
     else if (res.m.result === 'B') raw[res.squadB] = (raw[res.squadB] || 0) + win;
