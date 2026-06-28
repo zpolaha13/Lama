@@ -7,11 +7,11 @@
 import * as Store from './store.js';
 import { isFirebaseConfigured } from './config.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {} };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 } };
 
 /* ---------------- helpers ---------------- */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -557,19 +557,25 @@ function pairEditor(r) {
   const used = new Set();
   (r.pairings || []).forEach((p) => [...(p.teamA || []), ...(p.teamB || [])].forEach((id) => used.add(id)));
   const avail = Object.keys(S().players).filter((id) => !used.has(id));
-  const chips = (mid, side, ids) => (ids || []).map((pid) => {
+  // course handicap for that round (resolves tee/course/allowance%/basis)
+  const chOf = (pairing, pid) => {
+    const hc = matchHandicaps(S(), r, pairing);
+    return hc.scramble ? effectiveCH(S(), player(pid), r) : (hc.byPlayer[pid] != null ? hc.byPlayer[pid] : 0);
+  };
+  const chips = (pairing, side, ids) => (ids || []).map((pid) => {
     const p = player(pid);
-    return `<span class="chip">${sdot(p ? p.squadId : null)} ${esc(p ? p.name : '?')} <span style="cursor:pointer;color:var(--loss);font-weight:800" data-action="mremove" data-rid="${r.id}" data-mid="${mid}" data-side="${side}" data-pid="${pid}">×</span></span>`;
+    return `<span class="chip">${sdot(p ? p.squadId : null)} ${esc(p ? p.name : '?')} <b>(${chOf(pairing, pid)})</b> <span style="cursor:pointer;color:var(--loss);font-weight:800" data-action="mremove" data-rid="${r.id}" data-mid="${pairing.id}" data-side="${side}" data-pid="${pid}">×</span></span>`;
   }).join(' ');
   const addSel = (mid, side) => avail.length
-    ? `<select style="margin-top:4px" data-action="madd" data-rid="${r.id}" data-mid="${mid}" data-side="${side}"><option value="">+ add player…</option>${avail.map((id) => `<option value="${id}">${esc(player(id).name)} (${squad(player(id).squadId) ? squad(player(id).squadId).name.replace('Team ', '') : '?'})</option>`).join('')}</select>`
+    ? `<select style="margin-top:4px" data-action="madd" data-rid="${r.id}" data-mid="${mid}" data-side="${side}"><option value="">+ add player…</option>${avail.map((id) => `<option value="${id}">${esc(player(id).name)} (${squad(player(id).squadId) ? squad(player(id).squadId).name : '?'})</option>`).join('')}</select>`
     : '';
   const matches = (r.pairings || []).map((p, i) => `<div class="list-row" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;justify-content:space-between;align-items:center"><b>Match ${i + 1}</b><button class="btn danger small" data-action="del-match" data-rid="${r.id}" data-mid="${p.id}">Remove</button></div>
-      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE A</div><div>${chips(p.id, 'A', p.teamA) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'A')}</div>
-      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE B</div><div>${chips(p.id, 'B', p.teamB) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'B')}</div>
+      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE A</div><div>${chips(p, 'A', p.teamA) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'A')}</div>
+      <div><div class="muted" style="font-size:11px;font-weight:700">SIDE B</div><div>${chips(p, 'B', p.teamB) || '<span class="muted" style="font-size:12px">empty</span>'}</div>${addSel(p.id, 'B')}</div>
     </div>`).join('');
   return `<div style="margin-top:6px">${matches || '<div class="muted" style="font-size:13px;margin-bottom:8px">No matchups yet.</div>'}
+    <div class="muted" style="font-size:11px;margin:2px 0 6px">(##) = course handicap for this round — adjusts to the tee, course, and the round\'s handicap %/basis.</div>
     <div class="btn-row"><button class="btn secondary small" data-action="add-match" data-rid="${r.id}">+ Add matchup</button><button class="btn secondary small" data-action="auto-pair" data-id="${r.id}">Auto-pair from teams</button></div>
     ${avail.length ? `<div class="muted" style="font-size:12px;margin-top:6px">${avail.length} player${avail.length === 1 ? '' : 's'} not yet in a matchup.</div>` : ''}</div>`;
 }
@@ -702,9 +708,21 @@ function setupPlayers() {
     <div class="btn-row" style="margin-top:6px"><button class="btn secondary small" data-action="add-squad">+ Add team</button></div>
   </div>`;
 
+  const sort = ui.playerSort;
+  const order = squadIds();
+  const entries = Object.entries(st.players).sort(([, a], [, b]) => {
+    if (sort.key === 'index') return ((Number(a.index) || 0) - (Number(b.index) || 0)) * sort.dir;
+    if (sort.key === 'team') { const d = order.indexOf(a.squadId) - order.indexOf(b.squadId); return (d !== 0 ? d : (a.name || '').localeCompare(b.name || '')) * sort.dir; }
+    return (a.name || '').localeCompare(b.name || '') * sort.dir;
+  });
+  const caret = (k) => (sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
   html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
-    <table class="players-tbl"><thead><tr><th>Name</th><th class="c" style="width:52px">Hcp</th><th style="width:96px">Team</th><th style="width:34px"></th></tr></thead><tbody>
-    ${Object.entries(st.players).map(([id, p]) => `<tr>
+    <table class="players-tbl"><thead><tr>
+      <th data-action="sort-players" data-key="name" style="cursor:pointer">Name${caret('name')}</th>
+      <th class="c" data-action="sort-players" data-key="index" style="width:52px;cursor:pointer">Hcp${caret('index')}</th>
+      <th data-action="sort-players" data-key="team" style="width:96px;cursor:pointer">Team${caret('team')}</th>
+      <th style="width:34px"></th></tr></thead><tbody>
+    ${entries.map(([id, p]) => `<tr>
       <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
       <td><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></td>
       <td><select class="compact-sel" data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
@@ -808,6 +826,7 @@ app.addEventListener('click', (e) => {
     'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
     scope: () => { ui.scope = t.dataset.scope; render(); },
     'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
+    'sort-players': () => { const k = t.dataset.key; if (ui.playerSort.key === k) ui.playerSort.dir *= -1; else ui.playerSort = { key: k, dir: 1 }; render(); },
     'score-mode': () => { ui.scoreMode = t.dataset.mode; render(); },
     hole: () => { ui.holeIdx += Number(t.dataset.dir); ui.lastHole[ui.scoreRoundId] = ui.holeIdx; render(); },
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),

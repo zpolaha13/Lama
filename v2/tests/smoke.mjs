@@ -82,6 +82,11 @@ fireClick({ action: 'tab', tab: 'mycard' }); fireChange({ action: 'pick-me' }, '
 // setup: each sub-tab renders
 fireClick({ action: 'tab', tab: 'setup' }); check('setup');
 ['tournament', 'players', 'rounds', 'courses', 'data'].forEach((s) => { fireClick({ action: 'setup-tab', tab: s }); check('setup:' + s); });
+// players sort headers
+fireClick({ action: 'setup-tab', tab: 'players' });
+['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
+check('players-sorted');
+fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');
 // multi-tournament: create a copy, then a blank, then switch back
 fireClick({ action: 'new-tourney-copy' }); check('new-tourney-copy');
 const tourneys = Store.listTournaments();
