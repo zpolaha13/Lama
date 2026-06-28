@@ -2,6 +2,8 @@
 import * as G from '../js/engine/golf.js';
 import { computeStandings, resolveRound, chFor, matchHandicaps, effectiveCH } from '../js/engine/standings.js';
 import { diffPaths } from '../js/store.js';
+import { toCSV, fromCSV } from '../js/engine/csv.js';
+import { sampleTournament } from '../js/seed.js';
 
 let pass = 0, fail = 0;
 function eq(a, b, msg) {
@@ -181,6 +183,24 @@ eq(diffPaths({ a: { x: 1, y: 2 } }, { a: { x: 1 } }, '', {}), { 'a/y': null }, '
 eq(diffPaths({ p: [1, 2] }, { p: [1, 2, 3] }, '', {}), { p: [1, 2, 3] }, 'diff: array atomic');
 // no change -> empty
 eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = empty');
+
+/* ---------------- CSV import/export round-trip ---------------- */
+{
+  const orig = sampleTournament();
+  const back = fromCSV(toCSV(orig));
+  const n = (o, k) => Object.keys(o[k] || {}).length;
+  eq(n(back, 'players'), n(orig, 'players'), 'csv: player count round-trips');
+  eq(n(back, 'courses'), n(orig, 'courses'), 'csv: course count round-trips');
+  eq(n(back, 'rounds'), n(orig, 'rounds'), 'csv: round count round-trips');
+  eq(n(back, 'squads'), n(orig, 'squads'), 'csv: squad count round-trips');
+  eq(back.tournament.name, orig.tournament.name, 'csv: tournament name');
+  eq(back.rounds.r1.format, 'singles', 'csv: round format');
+  eq(back.rounds.r1.defaultTeeId, 'legacy-blue', 'csv: round tee resolves by name');
+  eq(back.courses.legacy.holes.length, 18, 'csv: 18 holes');
+  eq(back.skins.r1.value, 20, 'csv: skins value');
+  eq(back.rounds.r1.pairings[0].teamA, ['parker'], 'csv: pairing names map to ids');
+  eq(back.rounds.r2.pairings.length, 3, 'csv: fourball pairing count');
+}
 
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

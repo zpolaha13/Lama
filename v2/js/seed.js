@@ -92,7 +92,7 @@ export function sampleTournament() {
   return {
     schemaVersion: 2,
     tournament: {
-      id: 'trip-2026', name: 'Guys Golf Trip 2026', joinCode: 'REDBL',
+      id: 'trip-2026', name: 'Lama Palooza 2026', joinCode: 'REDBL',
       winPoints: 1, tiePoints: 0.5, weightMode: 'true', normalizeTarget: 4,
       countBestNofM: null, roundOrder: ['r1', 'r2', 'r3'],
     },

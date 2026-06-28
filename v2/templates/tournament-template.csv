@@ -1,0 +1,119 @@
+#TOURNAMENT
+name,winPoints,tiePoints,joinCode
+Lama Palooza 2026,1,0.5,REDBL
+
+#SQUADS
+id,name,color
+red,Red,#D0021B
+blue,Blue,#1B6FB3
+
+#PLAYERS
+name,index,squad,defaultTee
+Parker,5,red,
+Bernie,7,red,
+Jordan,11,red,
+Polo,18,red,
+Danny,18,red,
+Lil Bernie,20,red,
+Zach,5,blue,
+Andrew,6,blue,
+Ty,11,blue,
+Townsley,12,blue,
+Mitchy,20,blue,
+Blake,22,blue,
+
+#COURSES
+courseId,courseName,teeName,rating,slope
+legacy,Legacy Golf Links,Gold,74.4,139
+legacy,Legacy Golf Links,Blue,72.2,134
+legacy,Legacy Golf Links,White,69.6,130
+legacy,Legacy Golf Links,Green,66.5,117
+legacy,Legacy Golf Links,Red,63.9,113
+midsouth,Mid South Club,Gold,73.8,146
+midsouth,Mid South Club,Blue,72.1,139
+midsouth,Mid South Club,White,70,132
+midsouth,Mid South Club,Green,67.8,122
+midsouth,Mid South Club,Red,63.9,113
+talamore,Talamore Golf Resort,Gold,72.4,132
+talamore,Talamore Golf Resort,Blue,70.4,129
+talamore,Talamore Golf Resort,White,68.4,121
+talamore,Talamore Golf Resort,Green,65.2,112
+talamore,Talamore Golf Resort,Red,63.1,106
+
+#HOLES
+courseId,hole,par,si
+legacy,1,4,5
+legacy,2,5,13
+legacy,3,4,9
+legacy,4,4,1
+legacy,5,3,15
+legacy,6,5,11
+legacy,7,4,3
+legacy,8,4,7
+legacy,9,3,17
+legacy,10,4,4
+legacy,11,3,10
+legacy,12,4,12
+legacy,13,5,14
+legacy,14,4,6
+legacy,15,4,16
+legacy,16,4,2
+legacy,17,3,18
+legacy,18,5,8
+midsouth,1,4,12
+midsouth,2,4,4
+midsouth,3,3,18
+midsouth,4,5,10
+midsouth,5,4,2
+midsouth,6,3,16
+midsouth,7,4,14
+midsouth,8,4,8
+midsouth,9,5,6
+midsouth,10,4,11
+midsouth,11,3,17
+midsouth,12,4,1
+midsouth,13,4,9
+midsouth,14,4,3
+midsouth,15,5,13
+midsouth,16,4,7
+midsouth,17,3,15
+midsouth,18,4,5
+talamore,1,5,4
+talamore,2,3,16
+talamore,3,4,6
+talamore,4,5,14
+talamore,5,3,18
+talamore,6,4,12
+talamore,7,4,2
+talamore,8,4,8
+talamore,9,4,10
+talamore,10,4,7
+talamore,11,5,15
+talamore,12,4,5
+talamore,13,3,17
+talamore,14,4,9
+talamore,15,3,13
+talamore,16,4,1
+talamore,17,4,11
+talamore,18,4,3
+
+#ROUNDS
+roundId,name,courseId,format,tee,handicapAllowance,handicapMode,skinsValue
+r1,Round 1 — Legacy,legacy,singles,Blue,75,absolute,20
+r2,Round 2 — Mid South,midsouth,fourball,Blue,75,absolute,20
+r3,Round 3 — Talamore,talamore,shamble,Blue,75,absolute,20
+
+#PAIRINGS
+roundId,teamA,teamB
+r1,Parker,Zach
+r1,Jordan,Andrew
+r1,Bernie,Ty
+r1,Polo,Townsley
+r1,Danny,Mitchy
+r1,Lil Bernie,Blake
+r2,Parker|Polo,Andrew|Blake
+r2,Bernie|Danny,Zach|Townsley
+r2,Jordan|Lil Bernie,Ty|Mitchy
+r3,Parker|Lil Bernie,Zach|Blake
+r3,Jordan|Danny,Andrew|Mitchy
+r3,Polo|Bernie,Ty|Townsley

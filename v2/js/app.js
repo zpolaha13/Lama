@@ -9,6 +9,7 @@ import { isFirebaseConfigured } from './config.js';
 import * as Eng from './engine/golf.js';
 import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
+import { toCSV, fromCSV } from './engine/csv.js';
 
 const app = document.getElementById('app');
 const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set() };
@@ -783,6 +784,14 @@ function setupData() {
     <button class="btn" data-action="print-cards">🖨 Print / save scorecards (all rounds)</button>
     <div class="muted" style="font-size:12px;margin-top:8px">Opens your browser's print dialog — choose <b>Save as PDF</b> (set layout to <b>Landscape</b>). 2 cards per page with each player's tee, course handicap &amp; stroke dots; cut between them.</div>
   </div>`;
+  html += `<div class="card"><h2>Spreadsheet (CSV)</h2>
+    <div class="btn-row">
+      <button class="btn secondary small" data-action="csv-template">⬇ Download template</button>
+      <button class="btn secondary small" data-action="csv-import">⬆ Import from CSV</button>
+    </div>
+    <input id="csv-file" type="file" accept=".csv,text/csv" data-action="csv-file" style="display:none" />
+    <div class="muted" style="font-size:12px;margin-top:8px">The template is your current trip as a spreadsheet — players, courses, holes, rounds &amp; pairings. Edit it in Excel/Google Sheets, then <b>Import</b> to load a whole tournament at once. Importing <b>replaces</b> the current tournament's data.</div>
+  </div>`;
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
     <button class="btn secondary small" data-action="load-sample">Load our trip (12 players)</button>
     <button class="btn secondary small" data-action="export">Export</button>
@@ -931,6 +940,8 @@ app.addEventListener('click', (e) => {
     share: () => shareLink(),
     'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
     export: () => doExport(),
+    'csv-template': () => doCsvTemplate(),
+    'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
     'auto-pair': () => autoPair(t.dataset.id),
     'add-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = r.pairings || []; r.pairings.push({ id: Store.uid('m'), teamA: [], teamB: [] }); }),
@@ -965,6 +976,7 @@ app.addEventListener('change', (e) => {
       Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, v === '' ? null : parseInt(v, 10)); });
     },
     'pick-me': () => Store.setMe(v || null),
+    'csv-file': () => doCsvImport(e.target),
     'trip-name': () => Store.update((s) => { s.tournament.name = v; }),
     'set-normtarget': () => Store.update((s) => { s.tournament.normalizeTarget = Number(v) || 4; }),
     'squad-name': () => Store.update((s) => { s.squads[t.dataset.id].name = v; }),
@@ -1076,6 +1088,35 @@ function doExport() {
   const link = document.createElement('a');
   link.href = url; link.download = (S().tournament.name || 'golf-trip').replace(/\s+/g, '-').toLowerCase() + '.json';
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function slugName(s) { return (s || 'golf-trip').replace(/\s+/g, '-').toLowerCase(); }
+
+function doCsvTemplate() {
+  const blob = new Blob([toCSV(S())], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = slugName(S().tournament.name) + '-template.csv';
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function doCsvImport(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let next;
+    try { next = fromCSV(String(reader.result)); }
+    catch (err) { alert('Could not read that CSV.\n\n' + err.message); input.value = ''; return; }
+    const np = Object.keys(next.players || {}).length;
+    const nr = Object.keys(next.rounds || {}).length;
+    if (!confirm('Import ' + np + ' players and ' + nr + ' rounds?\n\nThis replaces the current tournament "' + (S().tournament.name || '') + '".')) { input.value = ''; return; }
+    Store.importJSON(JSON.stringify(next));
+    input.value = '';
+    ui.view = 'home';
+    render();
+  };
+  reader.readAsText(file);
 }
 
 function shareLink() {
