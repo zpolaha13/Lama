@@ -105,15 +105,15 @@ export function sampleTournament() {
     rounds: {
       r1: {
         id: 'r1', name: 'Round 1 — Legacy', courseId: 'legacy', format: 'singles', defaultTeeId: 'legacy-blue',
-        date: '', status: 'auto', scoringRule: { handicapAllowance: 75 }, pairings: r1pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r1pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r2: {
         id: 'r2', name: 'Round 2 — Mid South', courseId: 'midsouth', format: 'fourball', defaultTeeId: 'mid-blue',
-        date: '', status: 'auto', scoringRule: { handicapAllowance: 75 }, pairings: r2pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r2pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
       r3: {
         id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'shamble', defaultTeeId: 'tal-blue',
-        date: '', status: 'auto', scoringRule: { handicapAllowance: 75 }, pairings: r3pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r3pairings, scores: {}, teamScores: {}, teeOverrides: {},
       },
     },
     skins: {
