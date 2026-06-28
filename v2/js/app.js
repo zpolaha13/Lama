@@ -889,12 +889,12 @@ function setupData() {
   </div>`;
   html += `<div class="card"><h2>Spreadsheet (CSV)</h2>
     <div class="btn-row">
-      <button class="btn secondary small" data-action="csv-template">⬇ Download template</button>
+      <button class="btn secondary small" data-action="csv-template">⬇ Export CSV (no scores)</button>
       <button class="btn secondary small" data-action="csv-import">⬆ Import from CSV</button>
     </div>
     <input id="csv-file" type="file" accept=".csv,text/csv" data-action="csv-file" style="display:none" />
     ${impToggle}
-    <div class="muted" style="font-size:12px;margin-top:8px">The template is your current trip as a spreadsheet — players, courses, holes, rounds &amp; pairings. Edit it in Excel/Google Sheets, then <b>Import</b> to load a whole tournament at once. Importing ${impWord}.</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Exports this tournament's <b>setup</b> — players, GHIN #s, courses, holes, rounds, scoring &amp; pairings — as a spreadsheet, <b>without scores</b>. Great for starting another tournament: edit in Excel/Google Sheets if you like, then <b>Import</b> (tick "new tournament" to keep this one). Importing ${impWord}.</div>
   </div>`;
   html += `<div class="card"><h2>Data (JSON)</h2><div class="btn-row">
     <button class="btn secondary small" data-action="export">⬇ Export JSON</button>
@@ -1331,7 +1331,7 @@ function doCsvTemplate() {
   const blob = new Blob([toCSV(S())], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url; link.download = slugName(S().tournament.name) + '-template.csv';
+  link.href = url; link.download = slugName(S().tournament.name) + '-setup.csv';
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
