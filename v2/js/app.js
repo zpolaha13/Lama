@@ -11,7 +11,7 @@ import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRound
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 } };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set() };
 
 /* ---------------- helpers ---------------- */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -35,6 +35,12 @@ function teeNameFor(p, r) { const c = course(r.courseId); const tid = resolveTee
 
 /* ======================================================================= */
 function render() {
+  // remember scroll + which collapsible sections are open, so an edit-driven
+  // re-render doesn't jump the page or snap sections shut
+  let sy = 0;
+  try { sy = window.scrollY || document.documentElement.scrollTop || 0; } catch (e) {}
+  try { app.querySelectorAll('details[data-dk]').forEach((d) => { if (d.open) ui.openDetails.add(d.dataset.dk); else ui.openDetails.delete(d.dataset.dk); }); } catch (e) {}
+
   document.getElementById('tripName') && (document.getElementById('tripName').textContent = S().tournament.name);
   let body;
   if (!hasData() && ui.view !== 'setup') body = viewEmpty();
@@ -51,6 +57,7 @@ function render() {
     }
   }
   app.innerHTML = hero() + `<div class="screen">${body}</div>` + tabbar() + (ui.sheet ? sheet() : '');
+  if (sy) { try { window.scrollTo(0, sy); } catch (e) {} }
 }
 
 /* ---------------- Cup hero header ---------------- */
@@ -743,17 +750,15 @@ function setupRounds() {
         <div class="field"><label>Course</label><select data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>Tee (everyone unless overridden)</label><select data-action="round-tee" data-id="${id}">${teeOptions(r.courseId, r.defaultTeeId)}</select></div>
-      <details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
-      <details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Points &amp; handicap allowance</summary>
-        <div class="grid3" style="margin-top:8px">
-          <div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
-          <div class="field"><label>Handicap %</label><input type="number" step="5" min="0" max="100" data-action="round-hcpallow" data-id="${id}" value="${ruleHandicap(r).allowance}"></div>
-          <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
-            <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each own</option>
-            <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off low</option>
-          </select></div>
-        </div>
-      </details>
+      <details data-dk="tee-${id}" ${ui.openDetails.has('tee-' + id) ? 'open' : ''} style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
+      <div class="grid3" style="margin-bottom:6px">
+        <div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
+        <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
+        <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
+          <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each own</option>
+          <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off low</option>
+        </select></div>
+      </div>
       <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
 }
@@ -1022,8 +1027,10 @@ try {
 // mid-edit in a text field so a remote update doesn't steal focus.
 let renderDirty = false;
 function isEditingText() {
+  // only text/number inputs need protection from focus-stealing re-renders;
+  // selects commit on choice, so let them re-render immediately
   const ae = document.activeElement;
-  return ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA');
+  return ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
 }
 Store.subscribe(() => { if (isEditingText()) { renderDirty = true; return; } render(); });
 if (document.addEventListener) {
