@@ -796,9 +796,18 @@ function setupPlayers() {
   });
   const caret = (k) => (sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
   const sortBtn = (k, label) => `<button class="seg-btn ${sort.key === k ? 'active' : ''}" data-action="sort-players" data-key="${k}">${label}${caret(k)}</button>`;
-  const auto = !!GHIN_PROXY_URL;
   const loadingMap = ui.ghinLoading || {};
+  const tokenSet = !!getGhinToken();
+  const ghinBox = `<details class="ghin-auto" data-dk="ghin-auto" ${ui.openDetails.has('ghin-auto') ? 'open' : ''}>
+    <summary>⚡ GHIN auto-fill ${tokenSet ? '<span class="ok-tag">token set ✓</span>' : '<span class="muted">— paste a token</span>'}</summary>
+    <div class="ghin-auto-body">
+      <input class="ghin-token-in" type="password" placeholder="Paste GHIN token (Bearer …)" data-action="ghin-token" value="${esc(getGhinToken())}">
+      <button class="btn secondary small" data-action="ghin-get-all">↻ Get all</button>
+      <div class="muted" style="font-size:12px;flex-basis:100%">Sign in at <a href="https://www.ghin.com" target="_blank" rel="noopener">ghin.com</a> → DevTools → Network → click any request → copy the long <b>authorization</b> value (after "Bearer"). Paste here — good ~12h, stored only on this device. Or skip all this and use <b>ghin-proxy/console-lookup.js</b>.</div>
+    </div>
+  </details>`;
   html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
+    ${ghinBox}
     <div class="psort">Sort ${sortBtn('name', 'Name')}${sortBtn('index', 'Hcp')}${sortBtn('team', 'Team')}</div>
     ${entries.map(([id, p]) => { const sc = squad(p.squadId); const busy = !!loadingMap[id]; return `<div class="pcard">
       <div class="pcard-r1">
@@ -810,14 +819,10 @@ function setupPlayers() {
       <div class="pcard-r2">
         <div class="pf"><label>Index</label><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></div>
         <div class="pf pf-ghin"><label>GHIN #</label><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"></div>
-        ${auto
-          ? `<button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>`
-          : `<a class="btn secondary small ghin-btn" href="https://www.ghin.com/golfer-lookup" target="_blank" rel="noopener" title="Open GHIN golfer lookup">🔍 GHIN</a>`}
+        <button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>
       </div>
     </div>`; }).join('')}
-    <div class="muted" style="font-size:12px;margin-top:4px">${auto
-      ? 'Tap <b>↻ Get</b> to pull the Index from GHIN by number. You can still edit any Index by hand.'
-      : 'Indexes are typed in by hand. Fastest way to find one: the free <b>GHIN app</b> → <b>Golfer Lookup</b> → enter the GHIN # (no password needed). <b>🔍 GHIN</b> opens the web lookup (sign in with GHIN # + last name). Want it automatic? See <b>ghin-proxy/</b>.'}</div>
+    <div class="muted" style="font-size:12px;margin-top:4px">Tap <b>↻ Get</b> to pull a player's Index from GHIN (needs a token in the box above), or edit any Index by hand. No token? The <b>GHIN app → Golfer Lookup</b> shows it instantly.</div>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
   return html;
@@ -1057,6 +1062,7 @@ app.addEventListener('click', (e) => {
     export: () => doExport(),
     'import-json': () => doImportJSON(),
     'ghin-refresh': () => ghinRefresh(t.dataset.id),
+    'ghin-get-all': () => ghinRefreshAll(),
     'csv-template': () => doCsvTemplate(),
     'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
@@ -1102,6 +1108,7 @@ app.addEventListener('change', (e) => {
     'player-name': () => Store.update((s) => { s.players[t.dataset.id].name = v; }),
     'player-index': () => Store.update((s) => { s.players[t.dataset.id].index = v === '' ? 0 : parseFloat(v); }),
     'player-ghin': () => Store.update((s) => { s.players[t.dataset.id].ghin = String(v || '').replace(/[^0-9]/g, ''); }),
+    'ghin-token': () => { setGhinTokenVal(String(v || '').replace(/^\s*bearer\s+/i, '').replace(/['"]/g, '').trim()); render(); },
     'player-squad': () => Store.update((s) => { s.players[t.dataset.id].squadId = v; }),
     'round-name': () => Store.update((s) => { s.rounds[t.dataset.id].name = v; }),
     'round-format': () => Store.update((s) => { s.rounds[t.dataset.id].format = v; }),
@@ -1230,26 +1237,73 @@ function openGhinLookup(num) {
   openTab('https://www.ghin.com/lookup');
 }
 
-// Auto-fill a player's Index from GHIN via the configured proxy. With no proxy
-// set, fall back to opening the manual lookup. The Index stays editable either way.
+/* --- GHIN auto-fill: a device-local 12h token (from ghin.com) drives lookups,
+ * routed through your proxy if configured, else called directly. --- */
+const GHIN_TOKEN_KEY = 'ghin-token';
+function getGhinToken() { try { return localStorage.getItem(GHIN_TOKEN_KEY) || ''; } catch (e) { return ''; } }
+function setGhinTokenVal(v) { try { v ? localStorage.setItem(GHIN_TOKEN_KEY, v) : localStorage.removeItem(GHIN_TOKEN_KEY); } catch (e) {} }
+function ghinIndexFrom(data) {
+  let raw;
+  if (data && data.index != null) raw = data.index;                                   // proxy shape
+  else if (data && data.golfers && data.golfers[0]) raw = data.golfers[0].handicap_index; // direct shape
+  else if (Array.isArray(data) && data[0]) raw = data[0].handicap_index;
+  if (raw == null) return null;
+  const n = typeof raw === 'string' ? Number(raw.replace('+', '-')) : Number(raw);     // "+1.2" plus-handicap -> -1.2
+  return isNaN(n) ? null : n;
+}
+function fetchGhinIndex(num) {
+  const token = getGhinToken();
+  let url; const opts = { headers: {} };
+  if (GHIN_PROXY_URL) {
+    url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + 'ghin=' + encodeURIComponent(num);
+    if (token) url += '&token=' + encodeURIComponent(token);
+  } else {
+    url = 'https://api2.ghin.com/api/v1/golfers.json?golfer_id=' + encodeURIComponent(num) + '&status=Active&per_page=1&page=1&source=GHINcom';
+    if (token) opts.headers.authorization = 'Bearer ' + token;
+  }
+  return fetch(url, opts).then((r) => {
+    if (r.status === 401) throw new Error('token expired — grab a fresh one from ghin.com');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then((data) => { const idx = ghinIndexFrom(data); if (idx == null) throw new Error('no index in response'); return idx; });
+}
+function ghinErr(e) {
+  const m = e && e.message || String(e);
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m) && !GHIN_PROXY_URL) {
+    return 'Your browser blocked the direct GHIN call (CORS). Deploy the ghin-proxy Worker and set GHIN_PROXY_URL in config.js, or use ghin-proxy/console-lookup.js.';
+  }
+  return 'GHIN: ' + m;
+}
+function ghinReady() {
+  if (getGhinToken() || GHIN_PROXY_URL) return true;
+  alert('Paste your GHIN token first — open the "GHIN auto-fill" box at the top of Players.');
+  return false;
+}
 function ghinRefresh(id) {
   const p = player(id); if (!p) return;
   const num = String(p.ghin || '').replace(/[^0-9]/g, '');
-  if (!GHIN_PROXY_URL) { openGhinLookup(num); return; }
   if (!num) { alert('Enter a GHIN number for this player first.'); return; }
-  ui.ghinLoading = ui.ghinLoading || {};
-  ui.ghinLoading[id] = true; render();
-  const done = () => { if (ui.ghinLoading) delete ui.ghinLoading[id]; render(); };
-  const url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + 'ghin=' + encodeURIComponent(num);
-  fetch(url)
-    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then((data) => {
-      const idx = Number(data && (data.index != null ? data.index : data.handicap_index));
-      if (isNaN(idx)) throw new Error('No index in the response');
-      Store.update((s) => { if (s.players[id]) s.players[id].index = idx; });
-    })
-    .catch((e) => alert('Couldn\'t fetch from GHIN: ' + e.message + '\n\nCheck the GHIN number and that your proxy is reachable.'))
+  if (!ghinReady()) return;
+  ui.ghinLoading = ui.ghinLoading || {}; ui.ghinLoading[id] = true; render();
+  const done = () => { delete ui.ghinLoading[id]; render(); };
+  fetchGhinIndex(num)
+    .then((idx) => Store.update((s) => { if (s.players[id]) s.players[id].index = idx; }))
+    .catch((e) => alert(ghinErr(e)))
     .then(done, done);
+}
+function ghinRefreshAll() {
+  const ids = Object.keys(S().players).filter((id) => String(S().players[id].ghin || '').replace(/\D/g, ''));
+  if (!ids.length) { alert('No players have a GHIN number yet.'); return; }
+  if (!ghinReady()) return;
+  ui.ghinLoading = ui.ghinLoading || {}; ids.forEach((id) => { ui.ghinLoading[id] = true; }); render();
+  const errs = [];
+  ids.reduce((pr, id) => pr.then(() => {
+    const num = String(player(id).ghin).replace(/\D/g, '');
+    return fetchGhinIndex(num)
+      .then((idx) => Store.update((s) => { if (s.players[id]) s.players[id].index = idx; }))
+      .catch((e) => errs.push((player(id) ? player(id).name : id) + ' — ' + (e.message || e)))
+      .then(() => { delete ui.ghinLoading[id]; render(); });
+  }), Promise.resolve()).then(() => { render(); if (errs.length) alert('Some lookups failed:\n• ' + errs.join('\n• ')); });
 }
 
 function doImportJSON() {
