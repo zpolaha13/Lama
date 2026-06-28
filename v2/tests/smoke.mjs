@@ -74,8 +74,9 @@ fireChange({ action: 'skin-buyin', rid: 'r2' }, '15');
 check('skins-config');
 fireClick({ action: 'tab', tab: 'mycard' }); fireChange({ action: 'pick-me' }, 'p1'); check('mycard-money');
 
-// setup: flexible teams + manual matchup editor
+// setup: each sub-tab renders
 fireClick({ action: 'tab', tab: 'setup' }); check('setup');
+['tournament', 'players', 'rounds', 'courses', 'data'].forEach((s) => { fireClick({ action: 'setup-tab', tab: s }); check('setup:' + s); });
 // multi-tournament: create a copy, then a blank, then switch back
 fireClick({ action: 'new-tourney-copy' }); check('new-tourney-copy');
 const tourneys = Store.listTournaments();

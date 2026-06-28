@@ -11,7 +11,7 @@ import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRound
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament' };
 
 /* ---------------- helpers ---------------- */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -575,37 +575,56 @@ function tournamentsCard() {
   </div>`;
 }
 
-/* ---------------- SETUP (commissioner, lite) ---------------- */
+/* ---------------- SETUP (sub-tabbed so each section is short) ---------------- */
+const SETUP_TABS = [
+  ['tournament', 'Trip'],
+  ['players', 'Players'],
+  ['rounds', 'Rounds'],
+  ['courses', 'Courses'],
+  ['data', 'Sync'],
+];
 function viewSetup() {
-  const st = S();
-  let html = tournamentsCard();
+  if (!ui.setupTab || !SETUP_TABS.some((t) => t[0] === ui.setupTab)) ui.setupTab = 'tournament';
+  const seg = `<div class="seg">${SETUP_TABS.map(([id, label]) => `<button data-action="setup-tab" data-tab="${id}" class="${ui.setupTab === id ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+  let body = '';
+  switch (ui.setupTab) {
+    case 'tournament': body = setupTournament(); break;
+    case 'players': body = setupPlayers(); break;
+    case 'rounds': body = setupRounds(); break;
+    case 'courses': body = courseEditor(); break;
+    case 'data': body = setupData(); break;
+  }
+  return seg + body;
+}
 
+function setupTournament() {
+  const st = S();
   const stand = computeStandings(st);
-  html += `<div class="card"><h2>This tournament</h2>
+  return tournamentsCard() + `<div class="card"><h2>This trip</h2>
     <div class="field"><label>Name</label><input data-action="trip-name" value="${esc(st.tournament.name)}"></div>
     <div class="grid2">
       <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${st.tournament.weightMode !== 'normalized' ? 'selected' : ''}>True points</option><option value="normalized" ${st.tournament.weightMode === 'normalized' ? 'selected' : ''}>Equal-weight rounds</option></select></div>
       <div class="field"><label>Equal-weight target</label><input type="number" data-action="set-normtarget" value="${st.tournament.normalizeTarget}"></div>
     </div>
-    <div class="tip" style="margin-top:4px"><b>Target to win: ${stand.target}</b> (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value (singles ${roundIds().length ? '' : ''}= more matches = more points); "Equal-weight" makes every round worth the same so no single day dominates. Leave on <b>True points</b> if unsure.</div>
+    <div class="tip" style="margin-top:4px"><b>Target to win: ${stand.target}</b> (more than half of ${stand.totalAvailable} points in play). <b>Weighting</b>: "True points" counts each round at face value; "Equal-weight" makes every round worth the same. Leave on <b>True points</b> if unsure.</div>
   </div>`;
+}
 
-  // squads (add / remove — any number of teams)
-  html += `<div class="card"><h2>Teams</h2>
+function setupPlayers() {
+  const st = S();
+  let html = `<div class="card"><h2>Teams</h2>
     ${squadIds().map((sid) => { const s = squad(sid); const n = Object.values(st.players).filter((p) => p.squadId === sid).length; return `<div class="list-row">
       <span class="dot" style="background:${s.color || '#1B7A3D'}"></span>
       <input style="flex:1" data-action="squad-name" data-id="${sid}" value="${esc(s.name)}">
-      <span class="muted" style="font-size:12px;white-space:nowrap">${n} player${n === 1 ? '' : 's'}</span>
+      <span class="muted" style="font-size:12px;white-space:nowrap">${n}</span>
       <input type="color" style="width:46px;padding:2px" data-action="squad-color" data-id="${sid}" value="${s.color || '#1B7A3D'}">
       ${squadIds().length > 1 ? `<button class="btn danger small" data-action="del-squad" data-id="${sid}">×</button>` : ''}
     </div>`; }).join('')}
     <div class="btn-row" style="margin-top:6px"><button class="btn secondary small" data-action="add-squad">+ Add team</button></div>
-    <div class="muted" style="font-size:12px;margin-top:6px">Teams can be any size — assign players below. 6v6, 4v4, anything.</div>
   </div>`;
 
-  // players (add / remove)
   html += `<div class="card"><h2>Players (${Object.keys(st.players).length})</h2>
-    <table><thead><tr><th>Name</th><th style="width:58px">Index</th><th>Team</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Name</th><th style="width:54px">Idx</th><th>Team</th><th></th></tr></thead><tbody>
     ${Object.entries(st.players).map(([id, p]) => `<tr>
       <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
       <td><input type="number" step="0.1" data-action="player-index" data-id="${id}" value="${p.index}"></td>
@@ -615,43 +634,45 @@ function viewSetup() {
     </tbody></table>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
+  return html;
+}
 
-  // courses (full editor)
-  html += courseEditor();
-
-  // rounds + manual matchup editor
-  html += `<div class="card"><h2>Rounds &amp; matchups</h2>${roundIds().map((id, i) => { const r = round(id); return `<div style="border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px;margin-bottom:12px">
+function setupRounds() {
+  const st = S();
+  return `<div class="card"><h2>Rounds &amp; matchups</h2>${roundIds().map((id) => { const r = round(id); return `<div style="border:1px solid var(--hairline);border-radius:var(--r-md);padding:12px;margin-bottom:12px">
       <div class="field"><input data-action="round-name" data-id="${id}" value="${esc(r.name)}"></div>
       <div class="grid2">
         <div class="field"><label>Format</label><select data-action="round-format" data-id="${id}">${Object.keys(FORMAT_INFO).map((f) => `<option value="${f}" ${r.format === f ? 'selected' : ''}>${FORMAT_INFO[f].label}</option>`).join('')}</select></div>
         <div class="field"><label>Course</label><select data-action="round-course" data-id="${id}">${Object.entries(st.courses).map(([cid, c]) => `<option value="${cid}" ${r.courseId === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
       </div>
-      <div class="field"><label>Tee (everyone plays this unless overridden)</label><select data-action="round-tee" data-id="${id}">${teeOptions(r.courseId, r.defaultTeeId)}</select></div>
+      <div class="field"><label>Tee (everyone unless overridden)</label><select data-action="round-tee" data-id="${id}">${teeOptions(r.courseId, r.defaultTeeId)}</select></div>
       <details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Per-player tee overrides</summary><div style="margin-top:8px">${teeOverrideEditor(r)}</div></details>
-      <div class="grid3">
-        <div class="field"><label>Points / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
-        <div class="field"><label>Handicap %</label><input type="number" step="5" min="0" max="100" data-action="round-hcpallow" data-id="${id}" value="${ruleHandicap(r).allowance}"></div>
-        <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
-          <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each off own</option>
-          <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off the low</option>
-        </select></div>
-      </div>
+      <details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Points &amp; handicap allowance</summary>
+        <div class="grid3" style="margin-top:8px">
+          <div class="field"><label>Pts / match</label><input type="number" step="0.5" min="0" data-action="round-ppm" data-id="${id}" value="${(r.scoringRule && r.scoringRule.pointsPerMatch != null) ? r.scoringRule.pointsPerMatch : 1}"></div>
+          <div class="field"><label>Handicap %</label><input type="number" step="5" min="0" max="100" data-action="round-hcpallow" data-id="${id}" value="${ruleHandicap(r).allowance}"></div>
+          <div class="field"><label>Basis</label><select data-action="round-hcpmode" data-id="${id}">
+            <option value="absolute" ${ruleHandicap(r).mode !== 'relative' ? 'selected' : ''}>Each own</option>
+            <option value="relative" ${ruleHandicap(r).mode === 'relative' ? 'selected' : ''}>Off low</option>
+          </select></div>
+        </div>
+      </details>
       <label>Matchups</label>${pairEditor(r)}
     </div>`; }).join('')}</div>`;
+}
 
-  // sync status
+function setupData() {
   const online = Store.isOnline();
-  html += `<div class="card"><h2>Live sync</h2>
+  let html = `<div class="card"><h2>Live sync</h2>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <div><div style="font-weight:700">${online ? '● Live multi-phone sync is ON' : '○ Local only (this device)'}</div>
+      <div><div style="font-weight:700">${online ? '● Live sync is ON' : '○ Local only (this device)'}</div>
         <div class="muted" style="font-size:12px">Trip id: <b>${esc(Store.getTripId())}</b></div></div>
       ${online ? '<button class="btn small" data-action="share">Share link</button>' : ''}
     </div>
     ${online
       ? '<div class="muted" style="font-size:12px;margin-top:8px">Everyone who opens the shared link scores into the same live leaderboard. One scorer per group is smoothest.</div>'
-      : '<div class="tip" style="margin-top:10px">To let everyone score on their own phone: add your free Firebase project to <b>js/config.js</b> (steps are in that file), then re-deploy. Until then, scores stay on this device.</div>'}
+      : '<div class="tip" style="margin-top:10px">To let everyone score on their own phone, add your free Firebase project to <b>js/config.js</b>, then re-deploy.</div>'}
   </div>`;
-
   html += `<div class="card"><h2>Data</h2><div class="btn-row">
     <button class="btn secondary small" data-action="load-sample">Load our trip (12 players)</button>
     <button class="btn secondary small" data-action="export">Export</button>
@@ -707,6 +728,7 @@ app.addEventListener('click', (e) => {
     back: () => { ui.view = ui.view === 'score' ? 'round' : 'rounds'; render(); },
     'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || null; ui.holeIdx = 0; ui.view = 'score'; render(); },
     scope: () => { ui.scope = t.dataset.scope; render(); },
+    'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
     hole: () => { ui.holeIdx += Number(t.dataset.dir); render(); },
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
