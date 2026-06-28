@@ -11,7 +11,7 @@ import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRound
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament' };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {} };
 
 /* ---------------- helpers ---------------- */
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -396,18 +396,98 @@ function viewScore() {
     }).join('');
   }
 
-  return `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>
-    <div class="card stepper-wrap">
-      <div class="field"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
+  // count missing scores so we can warn that the round can't complete
+  const missing = countMissing(r, pairing, c);
+  const finalLine = res.m.result === 'IP'
+    ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : esc(statusTxt))
+    : '<b>✓ ' + esc(statusTxt) + ' — complete</b>';
+
+  const modeSeg = `<div class="seg" style="margin:0 0 12px">
+    <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
+    <button data-action="score-mode" data-mode="card" class="${ui.scoreMode === 'card' ? 'active' : ''}">▦ Full card</button>
+  </div>`;
+
+  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>
+    <div class="card">
+      <div class="field" style="margin-bottom:8px"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
+      ${modeSeg}`;
+
+  if (ui.scoreMode === 'card') {
+    return head + scoreCard(r, pairing, c) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
+      <div class="muted" style="font-size:12px;margin-top:8px">Tap any cell to type a score. ${missing > 0 ? 'Highlighted cells are blank — fill them to finish the round.' : 'All holes in — round result is final.'}</div>
+    </div>`;
+  }
+
+  return head + `
       <div class="hole-nav">
         <button data-action="hole" data-dir="-1" ${h === 0 ? 'disabled' : ''}>‹</button>
         <div class="holeinfo"><div class="h num">HOLE ${h + 1} of ${c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
         <button data-action="hole" data-dir="1" ${h === c.holes.length - 1 ? 'disabled' : ''}>›</button>
       </div>
       ${units}
-      <div class="tip" style="margin-top:8px"><b>${esc(statusTxt)}</b></div>
-      <div class="muted" style="font-size:12px;text-align:center;margin-top:8px">Tap the number to set par · −/+ to adjust · red dots are strokes received</div>
+      <div class="tip" style="margin-top:8px">${finalLine}</div>
+      <div class="muted" style="font-size:12px;text-align:center;margin-top:8px">Tap the number to set par · −/+ to adjust · switch to <b>Full card</b> to see all 18</div>
     </div>`;
+}
+
+/* count holes with a missing score across the pairing (so the user can find gaps) */
+function countMissing(r, pairing, c) {
+  const n = c.holes.length;
+  let miss = 0;
+  if (r.format === 'scramble') {
+    for (let h = 0; h < n; h++) { if (getTeam(r, pairing.id, 'A', h) == null) miss++; if (getTeam(r, pairing.id, 'B', h) == null) miss++; }
+  } else {
+    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
+    for (let h = 0; h < n; h++) ids.forEach((pid) => { if (getScore(r, pid, h) == null) miss++; });
+  }
+  return miss;
+}
+
+/* full 18-hole editable scorecard for the selected matchup */
+function scoreCard(r, pairing, c) {
+  const holes = c.holes;
+  let units;
+  if (r.format === 'scramble') {
+    const res = resolvePairingMatch(S(), r, pairing);
+    units = ['A', 'B'].map((side) => {
+      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
+      const sid = side === 'A' ? res.squadA : res.squadB;
+      return { name: (squad(sid) ? squad(sid).name : side), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h) };
+    });
+  } else {
+    const hc = matchHandicaps(S(), r, pairing);
+    units = [...pairing.teamA, ...pairing.teamB].map((pid) => {
+      const p = player(pid);
+      return { name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h) };
+    });
+  }
+  const section = (start, end, label) => {
+    let head = `<tr><th class="cardname">Hole</th>`;
+    for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
+    head += `<th>${label}</th></tr>`;
+    let par = `<tr class="dimrow"><td class="cardname">Par</td>`, si = `<tr class="dimrow"><td class="cardname">SI</td>`, ps = 0;
+    for (let i = start; i < end; i++) { par += `<td>${holes[i].par}</td>`; si += `<td>${holes[i].si}</td>`; ps += holes[i].par; }
+    par += `<td>${ps}</td>`; si += `<td></td>`;
+    let rows = '';
+    units.forEach((u) => {
+      let row = `<tr><td class="cardname">${sdot(u.sdotId)} ${esc(u.name)}</td>`;
+      let tot = 0, any = false;
+      for (let i = start; i < end; i++) {
+        const v = u.get(i);
+        const strokes = Eng.strokesOnHole(u.ch, holes[i].si, holes.length);
+        const has = v != null && v !== '' && !isNaN(v);
+        if (has) { tot += Number(v); any = true; }
+        row += `<td class="cardtd"><input class="cardcell ${has ? '' : 'miss'}" type="number" inputmode="numeric" value="${has ? v : ''}" data-action="card-score" data-rid="${r.id}" data-target="${u.target}" data-h="${i}">${strokes > 0 ? `<span class="cdots">${'•'.repeat(strokes)}</span>` : ''}</td>`;
+      }
+      row += `<td class="num"><b>${any ? tot : ''}</b></td></tr>`;
+      rows += row;
+    });
+    return head + par + si + rows;
+  };
+  let table = `<div class="cardscroll"><table class="scgrid">${section(0, 9, 'Out')}`;
+  if (holes.length > 9) table += section(9, 18, 'In');
+  table += `</table></div>`;
+  return table;
 }
 
 function unitRow({ rid, target, name, sdotId, ch, val, hole, holes, tee }) {
@@ -726,10 +806,11 @@ app.addEventListener('click', (e) => {
     tab: () => { ui.view = t.dataset.tab; ui.scope = ui.view === 'standings' ? 'overall' : ui.scope; render(); },
     'open-round': () => { ui.scope = t.dataset.id; ui.view = 'round'; render(); },
     back: () => { ui.view = ui.view === 'score' ? 'round' : 'rounds'; render(); },
-    'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || null; ui.holeIdx = 0; ui.view = 'score'; render(); },
+    'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
     scope: () => { ui.scope = t.dataset.scope; render(); },
     'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
-    hole: () => { ui.holeIdx += Number(t.dataset.dir); render(); },
+    'score-mode': () => { ui.scoreMode = t.dataset.mode; render(); },
+    hole: () => { ui.holeIdx += Number(t.dataset.dir); ui.lastHole[ui.scoreRoundId] = ui.holeIdx; render(); },
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
     'load-sample': () => { Store.importJSON(JSON.stringify(sampleTournament())); ui.view = 'home'; render(); },
@@ -769,7 +850,11 @@ app.addEventListener('change', (e) => {
   if (!t) return;
   const a = t.dataset.action, v = e.target.value;
   const set = {
-    'pick-pairing': () => { ui.scorePairingId = v; ui.holeIdx = 0; render(); },
+    'pick-pairing': () => { ui.scorePairingId = v; ui.lastPairing[ui.scoreRoundId] = v; render(); },
+    'card-score': () => {
+      const h = Number(t.dataset.h);
+      Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, v === '' ? null : parseInt(v, 10)); });
+    },
     'pick-me': () => Store.setMe(v || null),
     'trip-name': () => Store.update((s) => { s.tournament.name = v; }),
     'set-normtarget': () => Store.update((s) => { s.tournament.normalizeTarget = Number(v) || 4; }),
@@ -848,8 +933,13 @@ function readTarget(r, target, h) {
 }
 function writeTarget(r, target, h, val) {
   const [kind, id, side] = target.split(':');
-  if (kind === 'player') { r.scores = r.scores || {}; r.scores[id] = r.scores[id] || {}; r.scores[id][h] = val; }
-  else { r.teamScores = r.teamScores || {}; r.teamScores[id] = r.teamScores[id] || {}; r.teamScores[id][side] = r.teamScores[id][side] || {}; r.teamScores[id][side][h] = val; }
+  if (kind === 'player') {
+    r.scores = r.scores || {}; r.scores[id] = r.scores[id] || {};
+    if (val == null) delete r.scores[id][h]; else r.scores[id][h] = val;
+  } else {
+    r.teamScores = r.teamScores || {}; r.teamScores[id] = r.teamScores[id] || {}; r.teamScores[id][side] = r.teamScores[id][side] || {};
+    if (val == null) delete r.teamScores[id][side][h]; else r.teamScores[id][side][h] = val;
+  }
 }
 
 function autoPair(rid) {

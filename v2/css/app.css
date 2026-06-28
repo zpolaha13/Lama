@@ -153,6 +153,21 @@ td.c, th.c { text-align: center; }
 .stepper button.minus:active, .stepper button.plus:active { background: var(--green); color: #fff; }
 .stepper .val { flex: 1; text-align: center; font-size: 34px; font-weight: 800; }
 .stepper .val.under { color: var(--under); }
+/* full scorecard grid (score entry "Full card" mode) */
+.cardscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--hairline); border-radius: var(--r-sm); }
+.scgrid { width: 100%; border-collapse: collapse; min-width: 560px; }
+.scgrid th, .scgrid td { border: 1px solid var(--hairline); text-align: center; padding: 2px; font-size: 13px; }
+.scgrid th { background: var(--surface); font-weight: 800; color: var(--muted); }
+.scgrid .dimrow td { background: var(--surface); color: var(--muted); font-size: 11px; }
+.scgrid .cardname { text-align: left; white-space: nowrap; font-weight: 700; padding: 4px 8px; position: sticky; left: 0; background: var(--bg); z-index: 1; }
+.scgrid .dimrow .cardname { background: var(--surface); }
+.cardtd { position: relative; }
+.cardcell { width: 38px; text-align: center; padding: 7px 0; border: none; background: transparent; font-size: 15px; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.cardcell::-webkit-outer-spin-button, .cardcell::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cardcell.miss { background: color-mix(in srgb, var(--gold) 22%, transparent); }
+.cardcell:focus { outline: 2px solid var(--green); border-radius: 4px; }
+.cdots { position: absolute; top: 1px; right: 2px; font-size: 8px; line-height: 1; color: var(--under); letter-spacing: -1px; pointer-events: none; }
+
 .score-shape { display: inline-grid; place-items: center; min-width: 34px; }
 .shape-circle { border: 2px solid var(--under); border-radius: 50%; padding: 0 6px; }
 .shape-square { border: 2px solid var(--evenover); padding: 0 6px; }

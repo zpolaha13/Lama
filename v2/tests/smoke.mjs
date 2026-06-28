@@ -53,6 +53,11 @@ check('home');
   const uniq = [...new Set(targets)];
   uniq.forEach((tg) => { fireClick({ action: 'setpar', rid, target: tg }); fireClick({ action: 'step', rid, target: tg, dir: '-1' }); });
   fireClick({ action: 'hole', dir: '1' }); check('score-after-step:' + rid);
+  // full-card view renders and accepts a typed score
+  fireClick({ action: 'score-mode', mode: 'card' }); check('score-card:' + rid);
+  const tg = [...appEl.innerHTML.matchAll(/data-action="card-score"[^>]*data-target="([^"]+)"[^>]*data-h="(\d+)"/g)][0];
+  if (tg) fireChange({ action: 'card-score', rid, target: tg[1], h: tg[2] }, '4');
+  fireClick({ action: 'score-mode', mode: 'hole' });
 });
 
 // standings now reflects scores

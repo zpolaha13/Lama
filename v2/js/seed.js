@@ -117,8 +117,10 @@ export function sampleTournament() {
       },
     },
     skins: {
-      r1: { enabled: true, mode: 'net', tie: 'rollover', value: 10 },
-      r2: { enabled: true, mode: 'net', tie: 'split', value: 10 },
+      r1: { enabled: true, mode: 'net', tie: 'rollover', value: 20 },
+      r2: { enabled: true, mode: 'net', tie: 'rollover', value: 20 },
+      // R3 Talamore (scramble/shamble) skins left off — TBD, see notes.
+      r3: { enabled: false, mode: 'net', tie: 'rollover', value: 20 },
     },
     payouts: { potPerPlayer: 20, places: [0.6, 0.3, 0.1] },
     ui: { meId: null },
