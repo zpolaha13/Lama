@@ -1288,16 +1288,41 @@ try {
 // Re-render on any state change (local or remote/live). Defer if the user is
 // mid-edit in a text field so a remote update doesn't steal focus.
 let renderDirty = false;
+let lastTouch = 0;
+let flushTimer = null;
+const QUIET_MS = 700; // hold remote re-renders this long after a tap/keypress
+function nowMs() { try { return Date.now(); } catch (e) { return 0; } }
 function isEditingText() {
-  // Protect any focused form control from focus-stealing re-renders. Selects
-  // matter too: a live remote update mid-render destroys an open native
-  // dropdown before the user can pick, so defer while a <select> is focused.
+  // Protect any focused form control from focus-stealing re-renders.
   const ae = document.activeElement;
   return ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA');
 }
-Store.subscribe(() => { if (isEditingText()) { renderDirty = true; return; } render(); });
+// True while the user is mid-interaction: a control is focused, OR they tapped
+// within the last QUIET_MS. A live round fires remote updates constantly; this
+// keeps one from wiping out the control you're reaching for (e.g. a dropdown
+// you're about to open) before your tap lands.
+function isInteracting() { return isEditingText() || (nowMs() - lastTouch) < QUIET_MS; }
+function scheduleFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(function tick() {
+    flushTimer = null;
+    if (!renderDirty) return;
+    if (isInteracting()) { scheduleFlush(); return; } // still busy — wait for the lull
+    renderDirty = false; render();
+  }, QUIET_MS);
+}
+// Remote (other-phone) updates defer while interacting; your OWN actions
+// (score entry, edits) always render immediately so you see instant feedback.
+Store.subscribe((_s, meta) => {
+  if (meta && meta.remote && isInteracting()) { renderDirty = true; scheduleFlush(); return; }
+  if (isEditingText()) { renderDirty = true; scheduleFlush(); return; }
+  render();
+});
 if (document.addEventListener) {
-  document.addEventListener('focusout', () => { if (renderDirty) { renderDirty = false; setTimeout(render, 0); } });
+  ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+    try { document.addEventListener(ev, () => { lastTouch = nowMs(); }, { passive: true, capture: true }); } catch (e) {}
+  });
+  document.addEventListener('focusout', () => { if (renderDirty && !isInteracting()) { renderDirty = false; setTimeout(render, 0); } });
 }
 // shrink the hero once you scroll down a page
 try {

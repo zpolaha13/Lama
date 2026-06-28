@@ -54,7 +54,7 @@ export function subscribe(fn) {
   listeners.push(fn);
   return () => { listeners = listeners.filter((l) => l !== fn); };
 }
-function notify() { listeners.forEach((fn) => { try { fn(state); } catch (e) { console.error(e); } }); }
+function notify(meta) { listeners.forEach((fn) => { try { fn(state, meta || {}); } catch (e) { console.error(e); } }); }
 
 /* ---- helpers ---- */
 function snapshot() { return JSON.parse(JSON.stringify(state)); }
@@ -166,7 +166,7 @@ function onRemote(snap) {
   if (JSON.stringify(next) === JSON.stringify(state)) return; // our own echo
   state = next;
   persistLocal();
-  notify();
+  notify({ remote: true });
 }
 
 /* Open a tournament by id: detach old listener, load its data, attach new.
