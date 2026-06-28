@@ -57,7 +57,7 @@ export function sampleTournament() {
       [4, 7], [5, 15], [4, 5], [3, 17], [4, 9], [3, 13], [4, 1], [4, 11], [4, 3]]),
   };
 
-  const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '' }];
+  const mk = (id, name, index, squadId) => [id, { id, name, index, squadId, defaultTeeId: '', ghin: '' }];
   // Real roster (handicap index in parens). Team Red vs Team Blue, 6 v 6.
   const players = Object.fromEntries([
     mk('parker', 'Parker', 5, 'red'), mk('bernie', 'Bernie', 7, 'red'), mk('jordan', 'Jordan', 11, 'red'),

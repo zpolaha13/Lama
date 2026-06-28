@@ -83,7 +83,7 @@ export function fromCSV(text, warnings) {
     if (!r.name && !r.id) return;
     const id = slug(r.id || r.name);
     if (st.players[id]) warnings.push('Two players map to the same id "' + id + '" (' + (r.name || r.id) + ') — the later one wins. Use distinct names or an id column.');
-    st.players[id] = { id, name: r.name || id, index: Number(r.index) || 0, squadId: r.squad ? slug(r.squad) : (Object.keys(st.squads)[0] || ''), defaultTeeId: r.defaultTee || '' };
+    st.players[id] = { id, name: r.name || id, index: Number(r.index) || 0, squadId: r.squad ? slug(r.squad) : (Object.keys(st.squads)[0] || ''), defaultTeeId: r.defaultTee || '', ghin: String(r.ghin || '').replace(/[^0-9]/g, '') };
   });
 
   // payouts
@@ -193,8 +193,8 @@ export function toCSV(st) {
   Object.entries(st.squads).forEach(([id, s]) => row([id, s.name, s.color]));
   L.push('');
 
-  L.push('#PLAYERS'); L.push('name,index,squad,defaultTee');
-  Object.values(st.players).forEach((p) => row([p.name, p.index, p.squadId, p.defaultTeeId || '']));
+  L.push('#PLAYERS'); L.push('name,index,squad,defaultTee,ghin');
+  Object.values(st.players).forEach((p) => row([p.name, p.index, p.squadId, p.defaultTeeId || '', p.ghin || '']));
   L.push('');
 
   const pay = st.payouts || {};

@@ -8,19 +8,19 @@ red,Red,#D0021B
 blue,Blue,#1B6FB3
 
 #PLAYERS
-name,index,squad,defaultTee
-Parker,5,red,
-Bernie,7,red,
-Jordan,11,red,
-Polo,18,red,
-Danny,18,red,
-Lil Bernie,20,red,
-Zach,5,blue,
-Andrew,6,blue,
-Ty,11,blue,
-Townsley,12,blue,
-Mitchy,20,blue,
-Blake,22,blue,
+name,index,squad,defaultTee,ghin
+Parker,5,red,,
+Bernie,7,red,,
+Jordan,11,red,,
+Polo,18,red,,
+Danny,18,red,,
+Lil Bernie,20,red,,
+Zach,5,blue,,
+Andrew,6,blue,,
+Ty,11,blue,,
+Townsley,12,blue,,
+Mitchy,20,blue,,
+Blake,22,blue,,
 
 #PAYOUTS
 potPerPlayer,place1,place2,place3

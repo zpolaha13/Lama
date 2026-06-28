@@ -84,8 +84,10 @@ fireClick({ action: 'tab', tab: 'mycard' }); fireChange({ action: 'pick-me' }, '
 // setup: each sub-tab renders
 fireClick({ action: 'tab', tab: 'setup' }); check('setup');
 ['tournament', 'players', 'rounds', 'courses', 'data'].forEach((s) => { fireClick({ action: 'setup-tab', tab: s }); check('setup:' + s); });
-// players sort headers
+// players sort headers + GHIN field/lookup
 fireClick({ action: 'setup-tab', tab: 'players' });
+fireChange({ action: 'player-ghin', id: 'parker' }, '1234567');
+fireClick({ action: 'ghin-lookup', id: 'parker' }); check('ghin');
 ['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
 check('players-sorted');
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');

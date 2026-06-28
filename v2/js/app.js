@@ -745,15 +745,18 @@ function setupPlayers() {
     <table class="players-tbl"><thead><tr>
       <th data-action="sort-players" data-key="name" style="cursor:pointer">Name${caret('name')}</th>
       <th class="c" data-action="sort-players" data-key="index" style="width:52px;cursor:pointer">Hcp${caret('index')}</th>
-      <th data-action="sort-players" data-key="team" style="width:96px;cursor:pointer">Team${caret('team')}</th>
+      <th class="c" style="width:104px">GHIN</th>
+      <th data-action="sort-players" data-key="team" style="width:92px;cursor:pointer">Team${caret('team')}</th>
       <th style="width:34px"></th></tr></thead><tbody>
     ${entries.map(([id, p]) => `<tr>
       <td><input data-action="player-name" data-id="${id}" value="${esc(p.name)}"></td>
       <td><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></td>
+      <td><div class="ghin-cell"><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"><button class="btn secondary small icon-x" data-action="ghin-lookup" data-id="${id}" title="Copy GHIN # and open the lookup">🔍</button></div></td>
       <td><select class="compact-sel" data-action="player-squad" data-id="${id}">${squadIds().map((sid) => `<option value="${sid}" ${p.squadId === sid ? 'selected' : ''}>${esc(squad(sid).name)}</option>`).join('')}</select></td>
       <td><button class="btn danger small icon-x" data-action="del-player" data-id="${id}">×</button></td>
     </tr>`).join('')}
     </tbody></table>
+    <div class="muted" style="font-size:12px;margin-top:6px">GHIN # is optional. Tap 🔍 to copy it &amp; open GHIN's lookup, then read the player's Index into the <b>Hcp</b> column. (GHIN has no public API, so the index can't auto-fill.)</div>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
   return html;
@@ -992,6 +995,7 @@ app.addEventListener('click', (e) => {
     'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
     export: () => doExport(),
     'import-json': () => doImportJSON(),
+    'ghin-lookup': () => ghinLookup(t.dataset.id),
     'csv-template': () => doCsvTemplate(),
     'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
@@ -1001,7 +1005,7 @@ app.addEventListener('click', (e) => {
     mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
     'add-squad': () => Store.update((s) => { const id = Store.uid('sq'); const cols = ['#1B7A3D', '#D0021B', '#1B6FB3', '#F5A623', '#7c3aed', '#0891b2']; s.squads[id] = { name: 'Team ' + (Object.keys(s.squads).length + 1), color: cols[Object.keys(s.squads).length % cols.length] }; }),
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
-    'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '' }; }),
+    'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '', ghin: '' }; }),
     'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
     'switch-tourney': () => { ui.view = 'home'; ui.scope = 'overall'; Store.switchTournament(t.dataset.id); },
     'del-tourney': () => { const tn = (Store.listTournaments().find((x) => x.id === t.dataset.id) || {}).name || t.dataset.id; if (confirm('Delete tournament "' + tn + '"? This removes it for everyone and cannot be undone.')) Store.deleteTournament(t.dataset.id); },
@@ -1036,6 +1040,7 @@ app.addEventListener('change', (e) => {
     'squad-color': () => Store.update((s) => { s.squads[t.dataset.id].color = v; }),
     'player-name': () => Store.update((s) => { s.players[t.dataset.id].name = v; }),
     'player-index': () => Store.update((s) => { s.players[t.dataset.id].index = v === '' ? 0 : parseFloat(v); }),
+    'player-ghin': () => Store.update((s) => { s.players[t.dataset.id].ghin = String(v || '').replace(/[^0-9]/g, ''); }),
     'player-squad': () => Store.update((s) => { s.players[t.dataset.id].squadId = v; }),
     'round-name': () => Store.update((s) => { s.rounds[t.dataset.id].name = v; }),
     'round-format': () => Store.update((s) => { s.rounds[t.dataset.id].format = v; }),
@@ -1147,6 +1152,15 @@ function doExport() {
 }
 
 function slugName(s) { return (s || 'golf-trip').replace(/\s+/g, '-').toLowerCase(); }
+
+// Open GHIN's public golfer lookup, copying this player's GHIN # so they can
+// paste it into the search. GHIN has no open API, so this is the manual path.
+function ghinLookup(id) {
+  const p = player(id);
+  const num = p && p.ghin ? String(p.ghin).replace(/[^0-9]/g, '') : '';
+  try { if (num && typeof navigator !== 'undefined' && navigator.clipboard) navigator.clipboard.writeText(num); } catch (e) {}
+  try { window.open('https://www.ghin.com/lookup', '_blank', 'noopener'); } catch (e) {}
+}
 
 function doImportJSON() {
   const input = document.createElement('input');

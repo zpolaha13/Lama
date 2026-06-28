@@ -203,6 +203,9 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
 .hcp-in { text-align: center; -moz-appearance: textfield; }
 .hcp-in::-webkit-outer-spin-button, .hcp-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .compact-sel { padding-right: 2px; }
+.ghin-cell { display: flex; align-items: center; gap: 2px; }
+.ghin-cell .ghin-in { width: 100%; min-width: 0; text-align: center; padding: 10px 2px; }
+.ghin-cell button { flex: none; padding: 6px 4px; line-height: 1; }
 .icon-x { width: 34px; padding: 8px 0; text-align: center; }
 
 /* ---------- explainer sheet ---------- */
