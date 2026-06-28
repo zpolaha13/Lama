@@ -271,6 +271,17 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   const bad = fromCSV('#SQUADS\nid,name,color\nred,Red,"#fff;<img>"\n#PLAYERS\nname,index,squad\nAl,5,red\n#PAIRINGS\nroundId,teamA,teamB\nr1,Al,Bob', w2);
   eq(bad.squads.red.color, '#888', 'csv: unsafe color rejected');
   eq(w2.length, 1, 'csv: unknown pairing name produces a warning');
+
+  // survives a round-trip through a spreadsheet: every row padded with trailing
+  // commas and blank separators saved as ",,,," (what Excel/Sheets actually do)
+  const WID = 14;
+  const mangled = toCSV(sampleTournament()).split('\n')
+    .map((l) => l + ','.repeat(Math.max(0, WID - (l.match(/,/g) || []).length))).join('\n');
+  const xl = fromCSV(mangled);
+  eq(xl.tournament.name, 'Lama Palooza 2026', 'csv: section headers survive trailing commas');
+  eq(Object.keys(xl.players).length, 12, 'csv: all players survive spreadsheet padding');
+  eq(Object.keys(xl.rounds).length, 3, 'csv: all rounds survive spreadsheet padding');
+  eq(xl.rounds.r1.pairings.length, 6, 'csv: pairings survive spreadsheet padding');
 }
 
 console.log(`\nPASS ${pass}  FAIL ${fail}`);

@@ -46,12 +46,16 @@ function splitSections(text) {
   text.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
-    if (line.startsWith('#')) { cur = line.slice(1).trim().toUpperCase(); sections[cur] = []; header = null; return; }
+    // Section header. Spreadsheets pad rows with trailing commas, so "#PLAYERS"
+    // is saved as "#PLAYERS,,,,," — take only the name before the first comma.
+    if (line.startsWith('#')) { cur = line.slice(1).split(',')[0].trim().toUpperCase(); sections[cur] = []; header = null; return; }
     if (line.startsWith('//')) return;          // comment lines
     if (!cur) return;
     const cells = parseLine(raw);
+    // Skip all-empty rows — spreadsheets write blank separator lines as ",,,,".
+    if (cells.every((c) => c == null || String(c).trim() === '')) return;
     if (!header) { header = cells; return; }
-    const obj = {}; header.forEach((h, i) => { obj[h.trim()] = (cells[i] != null ? cells[i] : '').trim(); });
+    const obj = {}; header.forEach((h, i) => { const k = (h || '').trim(); if (k) obj[k] = (cells[i] != null ? cells[i] : '').trim(); });
     sections[cur].push(obj);
   });
   return sections;
