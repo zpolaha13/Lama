@@ -810,12 +810,14 @@ function setupPlayers() {
       <div class="pcard-r2">
         <div class="pf"><label>Index</label><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></div>
         <div class="pf pf-ghin"><label>GHIN #</label><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"></div>
-        <button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="${auto ? 'Fetch handicap index from GHIN' : 'Copy GHIN # and open the lookup'}">${busy ? '…' : (auto ? '↻ Get' : '🔍 Look up')}</button>
+        ${auto
+          ? `<button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>`
+          : `<a class="btn secondary small ghin-btn" href="https://www.ghin.com/golfer-lookup" target="_blank" rel="noopener" title="Open GHIN golfer lookup">🔍 GHIN</a>`}
       </div>
     </div>`; }).join('')}
     <div class="muted" style="font-size:12px;margin-top:4px">${auto
       ? 'Tap <b>↻ Get</b> to pull the Index from GHIN by number. You can still edit any Index by hand.'
-      : 'GHIN # is optional. <b>🔍 Look up</b> copies the number &amp; opens GHIN\'s lookup so you can type the Index in. (Set up the proxy in <b>ghin-proxy/</b> to auto-fill.)'}</div>
+      : 'Indexes are typed in by hand. Fastest way to find one: the free <b>GHIN app</b> → <b>Golfer Lookup</b> → enter the GHIN # (no password needed). <b>🔍 GHIN</b> opens the web lookup (sign in with GHIN # + last name). Want it automatic? See <b>ghin-proxy/</b>.'}</div>
     <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
   </div>`;
   return html;
