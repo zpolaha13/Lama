@@ -19,7 +19,11 @@ eq(G.strokesOnHole(9, 10, 18), 0, 'stroke si10 none');
 eq(G.strokesOnHole(20, 2, 18), 2, 'stroke si2 two');
 eq(G.strokesOnHole(-2, 18, 18), -1, 'plus give-back si18');
 eq(G.strokesOnHole(-2, 16, 18), 0, 'plus give-back si16 none');
-eq(G.scrambleHandicap(8, 12), Math.round(0.35 * 8 + 0.15 * 12), 'scramble hc');
+eq(G.scrambleHandicap([8, 12]), Math.round(0.35 * 8 + 0.15 * 12), 'scramble hc (2-player 35/15)');
+eq(G.scrambleHandicap([12, 8]), Math.round(0.35 * 8 + 0.15 * 12), 'scramble hc order-independent (low gets 35%)');
+eq(G.scrambleHandicap([10]), 10, 'scramble hc 1-player = own CH');
+eq(G.scrambleHandicap([8, 12], 50), Math.round((0.35 * 8 + 0.15 * 12) * 0.5), 'scramble hc allowance scales the blend');
+eq(G.scrambleHandicap([20, 16, 12, 8]), Math.round(0.25 * 8 + 0.20 * 12 + 0.15 * 16 + 0.10 * 20), 'scramble hc 4-player 25/20/15/10');
 
 const holes = Array.from({ length: 18 }, (_, i) => ({ par: 4, si: i + 1 }));
 // best ball: A best 4 vs B best 5 every hole -> A wins

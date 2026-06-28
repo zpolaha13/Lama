@@ -84,12 +84,17 @@ export function effectiveCH(state, player, round) {
 /* Effective playing handicaps for everyone in a match, honoring allowance + basis.
  * For 'relative', strokes are shifted so the lowest in the match plays off scratch. */
 export function matchHandicaps(state, round, pairing) {
-  const { mode } = ruleHandicap(round);
+  const { mode, allowance } = ruleHandicap(round);
   if (round.format === 'scramble') {
-    const aEff = (pairing.teamA || []).map((pid) => effectiveCH(state, state.players[pid], round));
-    const bEff = (pairing.teamB || []).map((pid) => effectiveCH(state, state.players[pid], round));
-    let chA = aEff.length >= 2 ? scrambleHandicap(aEff[0], aEff[1]) : (aEff[0] || 0);
-    let chB = bEff.length >= 2 ? scrambleHandicap(bEff[0], bEff[1]) : (bEff[0] || 0);
+    // One total team handicap = USGA scramble blend of each side's RAW course
+    // handicaps (allowance applied once to the blend, NOT per player — the
+    // 35/15 weighting IS the scramble allowance, so don't double-discount).
+    const teamCH = (ids) => scrambleHandicap(
+      (ids || []).map((pid) => state.players[pid]).filter(Boolean).map((p) => chFor(state, p, round)),
+      allowance,
+    );
+    let chA = teamCH(pairing.teamA);
+    let chB = teamCH(pairing.teamB);
     if (mode === 'relative') { const m = Math.min(chA, chB); chA -= m; chB -= m; }
     return { scramble: true, teamA: chA, teamB: chB, byPlayer: {} };
   }

@@ -90,11 +90,22 @@ export function scrambleNets(teamHandicap, holes, getTeamScore) {
   });
 }
 
-/* 2-person scramble handicap: 35% low + 15% high. */
-export function scrambleHandicap(chLowFirst, chOther) {
-  const low = Math.min(chLowFirst, chOther);
-  const high = Math.max(chLowFirst, chOther);
-  return Math.round(0.35 * low + 0.15 * high);
+/* Scramble TEAM handicap from each member's (raw) course handicap.
+ * USGA recommended allowances by team size, applied to the sorted handicaps
+ * (lowest/best first): 2-player 35/15, 3-player 30/20/10, 4-player 25/20/15/10.
+ * `allowancePct` (default 100) scales the whole blend if a group wants fewer
+ * strokes. Rounds ONCE so there's a single clean total team handicap.
+ * Accepts an array of course handicaps (preferred) or legacy positional args. */
+export function scrambleHandicap(chs, allowancePct) {
+  const list = (Array.isArray(chs) ? chs : [chs]).filter((x) => x != null && !isNaN(x)).map(Number);
+  if (!list.length) return 0;
+  const pct = (allowancePct == null ? 100 : Number(allowancePct)) / 100;
+  if (list.length === 1) return Math.round(list[0] * pct);
+  const sorted = list.slice().sort((a, b) => a - b); // lowest (best) first
+  const W = { 2: [0.35, 0.15], 3: [0.30, 0.20, 0.10], 4: [0.25, 0.20, 0.15, 0.10] }[sorted.length] || [0.35, 0.15];
+  let sum = 0;
+  for (let i = 0; i < sorted.length && i < W.length; i++) sum += W[i] * sorted[i];
+  return Math.round(sum * pct);
 }
 
 /* Resolve a match from two net-per-hole arrays.

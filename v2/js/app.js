@@ -287,6 +287,7 @@ function roundPlayersCH(r) {
 /* label for a round's handicap setting, e.g. "Full handicap", "80% off the low" */
 function hcpLabel(r) {
   const { allowance, mode } = ruleHandicap(r);
+  if (r.format === 'scramble') return 'Team handicap (35/15)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
   const pct = allowance === 100 ? 'Full' : allowance + '%';
   return pct + (mode === 'relative' ? ' off the low' : ' handicap');
 }
