@@ -12,7 +12,7 @@ import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set() };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set(), importAsNew: false };
 let heroCompact = false;
 
 /* ---------------- helpers ---------------- */
@@ -770,6 +770,8 @@ function setupRounds() {
 
 function setupData() {
   const online = Store.isOnline();
+  const impToggle = `<label class="imp-toggle"><input type="checkbox" data-action="toggle-import-new" ${ui.importAsNew ? 'checked' : ''} /> Import as a <b>new</b> tournament (keep this one)</label>`;
+  const impWord = ui.importAsNew ? 'adds a <b>separate</b> tournament you can switch between' : "<b>replaces</b> the current tournament's data";
   let html = `<div class="card"><h2>Live sync</h2>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div><div style="font-weight:700">${online ? '● Live sync is ON' : '○ Local only (this device)'}</div>
@@ -790,14 +792,16 @@ function setupData() {
       <button class="btn secondary small" data-action="csv-import">⬆ Import from CSV</button>
     </div>
     <input id="csv-file" type="file" accept=".csv,text/csv" data-action="csv-file" style="display:none" />
-    <div class="muted" style="font-size:12px;margin-top:8px">The template is your current trip as a spreadsheet — players, courses, holes, rounds &amp; pairings. Edit it in Excel/Google Sheets, then <b>Import</b> to load a whole tournament at once. Importing <b>replaces</b> the current tournament's data.</div>
+    ${impToggle}
+    <div class="muted" style="font-size:12px;margin-top:8px">The template is your current trip as a spreadsheet — players, courses, holes, rounds &amp; pairings. Edit it in Excel/Google Sheets, then <b>Import</b> to load a whole tournament at once. Importing ${impWord}.</div>
   </div>`;
   html += `<div class="card"><h2>Data (JSON)</h2><div class="btn-row">
     <button class="btn secondary small" data-action="export">⬇ Export JSON</button>
     <button class="btn secondary small" data-action="import-json">⬆ Import JSON</button>
     <button class="btn danger small" data-action="clear">Clear all</button>
   </div>
-  <div class="muted" style="font-size:12px;margin-top:8px">Export saves the whole tournament as a JSON file. Import loads one back (replaces the current tournament's data).</div></div>`;
+  ${impToggle}
+  <div class="muted" style="font-size:12px;margin-top:8px">Export saves the whole tournament as a JSON file. Import ${impWord}.</div></div>`;
   return html;
 }
 
@@ -992,6 +996,7 @@ app.addEventListener('change', (e) => {
       Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, v === '' ? null : parseInt(v, 10)); });
     },
     'pick-me': () => Store.setMe(v || null),
+    'toggle-import-new': () => { ui.importAsNew = !!e.target.checked; render(); },
     'csv-file': () => doCsvImport(e.target),
     'trip-name': () => Store.update((s) => { s.tournament.name = v; }),
     'set-normtarget': () => Store.update((s) => { s.tournament.normalizeTarget = Number(v) || 4; }),
@@ -1120,12 +1125,7 @@ function doImportJSON() {
       try { next = JSON.parse(String(reader.result)); }
       catch (err) { alert('That file isn\'t valid JSON.\n\n' + err.message); return; }
       if (!next || !next.tournament || !next.players) { alert('That JSON doesn\'t look like a tournament export.'); return; }
-      const np = Object.keys(next.players || {}).length;
-      const nr = Object.keys(next.rounds || {}).length;
-      if (!confirm('Import "' + ((next.tournament && next.tournament.name) || 'tournament') + '"?\n\n' + np + ' players, ' + nr + ' rounds. This replaces the current tournament\'s data.')) return;
-      Store.importJSON(JSON.stringify(next));
-      ui.view = 'home';
-      render();
+      finishImport(next, (next.tournament && next.tournament.name) || 'tournament');
     };
     reader.readAsText(file);
   };
@@ -1148,15 +1148,24 @@ function doCsvImport(input) {
     let next;
     try { next = fromCSV(String(reader.result)); }
     catch (err) { alert('Could not read that CSV.\n\n' + err.message); input.value = ''; return; }
-    const np = Object.keys(next.players || {}).length;
-    const nr = Object.keys(next.rounds || {}).length;
-    if (!confirm('Import ' + np + ' players and ' + nr + ' rounds?\n\nThis replaces the current tournament "' + (S().tournament.name || '') + '".')) { input.value = ''; return; }
-    Store.importJSON(JSON.stringify(next));
     input.value = '';
-    ui.view = 'home';
-    render();
+    finishImport(next, (next.tournament && next.tournament.name) || 'tournament');
   };
   reader.readAsText(file);
+}
+
+// Land an imported tournament either over the current one or as a brand-new
+// tournament you can switch between, based on the "Import as new" toggle.
+function finishImport(next, name) {
+  const np = Object.keys(next.players || {}).length;
+  const nr = Object.keys(next.rounds || {}).length;
+  const asNew = ui.importAsNew;
+  const where = asNew ? 'as a NEW tournament (keeping the current one)' : 'over the current tournament "' + (S().tournament.name || '') + '" (replaces its data)';
+  if (!confirm('Import "' + name + '" — ' + np + ' players, ' + nr + ' rounds — ' + where + '?')) return;
+  if (asNew) Store.createTournament({ name, mode: 'import', data: next });
+  else Store.importJSON(JSON.stringify(next));
+  ui.view = 'home';
+  render();
 }
 
 function shareLink() {

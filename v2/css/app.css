@@ -101,6 +101,8 @@ body {
 .btn.danger { background: var(--loss); }
 .btn-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .btn-row .btn { width: auto; flex: 1; }
+.imp-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; cursor: pointer; }
+.imp-toggle input { width: 16px; height: 16px; flex: none; }
 
 /* ---------- action card (Home) ---------- */
 .action { background: linear-gradient(135deg, var(--surface-2), var(--surface)); border: 1px solid var(--hairline); border-left: 4px solid var(--green); border-radius: var(--r-md); padding: var(--s4); margin-bottom: var(--s3); }

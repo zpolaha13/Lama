@@ -169,6 +169,16 @@ export function createTournament(opts) {
   const mode = (opts && opts.mode) || 'blank';
   const id = slug(name) + '-' + Math.random().toString(36).slice(2, 6);
   let init;
+  if (mode === 'import' && opts && opts.data) {
+    init = JSON.parse(JSON.stringify(opts.data));
+    init.tournament = init.tournament || {};
+    init.tournament.name = name;
+    init.tournament.id = id;
+    openTournament(id);
+    replaceAll(init);
+    registerInIndex(id, name);
+    return id;
+  }
   if (mode === 'copy') {
     init = JSON.parse(JSON.stringify(state)); // duplicate current setup, clear scores
     Object.values(init.rounds || {}).forEach((r) => { r.scores = {}; r.teamScores = {}; r.status = 'auto'; });
