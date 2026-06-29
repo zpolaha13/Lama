@@ -227,8 +227,11 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   set('t1', 4); set('t2', 5); set('t3', 4); // t1 CH 8 net 64, t2 CH 8 net 82, t3 CH 10 net 62
   const tr = teamScrambleRound(ts, ts.rounds.r1);
   const t3 = tr.teams.find((t) => t.squadId === 't3');
-  eq(t3.ch, 10, 'team scramble: 25/20/15/10 handicap (8,12,18,24)');
-  eq(t3.net, 62, 'team scramble: net = gross - team strokes');
+  const t1 = tr.teams.find((t) => t.squadId === 't1');
+  eq(t3.rawCh, 10, 'team scramble: raw 25/20/15/10 handicap (8,12,18,24)');
+  eq(t1.ch, 0, 'team scramble: low team plays scratch (off the low team)');
+  eq(t3.ch, 2, 'team scramble: others get the difference (10 - low 8)');
+  eq(t3.net, 70, 'team scramble: net = gross - off-low team strokes');
   eq(tr.teams[0].squadId, 't3', 'team scramble: low net ranks first');
   eq(tr.teams[0].place, 1, 'team scramble: leader is place 1');
   const sd = computeStandings(ts);

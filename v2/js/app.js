@@ -7,7 +7,7 @@
 import * as Store from './store.js';
 import { isFirebaseConfigured, GHIN_PROXY_URL } from './config.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
@@ -353,7 +353,7 @@ function teamLeaderboardCard(teams, holes, title) {
   return `<div class="card breakdown"><h2>${esc(title || 'Leaderboard')}</h2>
     <table><thead><tr><th class="c">Pos</th><th>Team</th><th class="c">Gross</th><th class="c">Net</th><th class="c">±</th><th class="r">Thru</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div class="muted" style="font-size:12px;margin-top:8px">Low team <b>net</b> wins. Net uses the team handicap (25/20/15/10).</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Low team <b>net</b> wins. Team handicap 25/20/15/10, off the low team (lowest plays scratch).</div>
   </div>`;
 }
 
@@ -375,7 +375,7 @@ function roundPlayersCH(r) {
 function hcpLabel(r) {
   const { allowance, mode } = ruleHandicap(r);
   if (r.format === 'scramble') return 'Team handicap (35/15)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
-  if (r.format === 'teamscramble') return 'Team handicap (25/20/15/10)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
+  if (r.format === 'teamscramble') return 'Team handicap 25/20/15/10, off the low team' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
   const pct = allowance === 100 ? 'Full' : allowance + '%';
   return pct + (mode === 'relative' ? ' off the low' : ' handicap');
 }
@@ -621,7 +621,7 @@ function viewScoreTeams(r, c) {
   const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button><div class="card">${modeSeg}`;
   if (ui.scoreMode === 'card') {
     const units = teams.map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, ch: teamScramCH(r, sid), target: `tscram:${sid}`, get: (hh) => getTeamScram(r, sid, hh) }));
-    return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">One row per team — enter the team's scramble score each hole. Net uses the team handicap (25/20/15/10).</div></div>`;
+    return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">One row per team — enter the team's scramble score each hole. Handicap is 25/20/15/10 off the low team (lowest plays scratch).</div></div>`;
   }
   const units = teams.map((sid) => {
     const ch = teamScramCH(r, sid);
@@ -922,7 +922,7 @@ function setupRounds() {
             <div class="field"><label>Scoring</label><input value="Low team net wins" disabled></div>
             <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
           </div>
-          <div class="muted" style="font-size:12px;margin:-2px 0 8px">Each team plays one scramble ball; lowest team net wins. Team handicap = 25/20/15/10 of the four course handicaps${ruleHandicap(r).allowance !== 100 ? ' × ' + ruleHandicap(r).allowance + '%' : ''}.</div>`;
+          <div class="muted" style="font-size:12px;margin:-2px 0 8px">Each team plays one scramble ball; lowest team net wins. Team handicap = 25/20/15/10 of the four course handicaps${ruleHandicap(r).allowance !== 100 ? ' × ' + ruleHandicap(r).allowance + '%' : ''}, <b>off the low team</b> (lowest plays scratch).</div>`;
         }
         const ptsFields = sys === 'holes'
           ? `<div class="field"><label>Pts / hole</label><input type="number" step="0.5" min="0" data-action="round-holepts" data-id="${id}" value="${hp}"></div>
@@ -1102,19 +1102,18 @@ function printTeamCard(r, c, sid, idx) {
   const memNames = members.map((p) => esc(p.name) + ' <span class="sub">(' + chFor(st, p, r) + ')</span>').join(' · ');
   const { cols, hdr, parR, siR } = pcardColumns(holes);
   const rule = ruleHandicap(r);
-  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · team hcp 25/20/15/10${rule.allowance !== 100 ? ' @ ' + rule.allowance + '%' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
-  const dotRow = (label, withDots, cls) => `<tr class="${cls}"><td class="pn ${cls}-lbl"><span class="cdot" style="background:${color}"></span>${esc(label)}</td>${cols.map((cc) => {
+  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · team hcp 25/20/15/10 off low${rule.allowance !== 100 ? ' @ ' + rule.allowance + '%' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
+  const scoreRow = `<tr class="ptgross"><td class="pn ptgross-lbl"><span class="cdot" style="background:${color}"></span>Score</td>${cols.map((cc) => {
     if (cc.sum) return '<td class="sumcol"></td>';
-    const stk = withDots ? Eng.strokesOnHole(ch, holes[cc.h].si, N) : 0;
+    const stk = Eng.strokesOnHole(ch, holes[cc.h].si, N);
     return `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`;
   }).join('')}</tr>`;
-  const body = dotRow('Team gross', true, 'ptgross') + dotRow('Team net', false, 'ptnet');
-  const table = `<table class="pcard">${hdr}${parR}${siR}${body}</table>`;
+  const table = `<table class="pcard">${hdr}${parR}${siR}${scoreRow}</table>`;
   return `<div class="print-card">
     <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · CH ${ch}</div></div>
     <div class="pc-sub" style="margin:2px 0 4px">${memNames}</div>
     ${table}
-    <div class="pc-foot">• = team handicap stroke received. Write the team's gross each hole; net = gross − strokes. Scorer ____________</div>
+    <div class="pc-foot">• = handicap stroke (off the low team). Write one team score per hole. Scorer ____________</div>
   </div>`;
 }
 
@@ -1319,8 +1318,9 @@ function writeTarget(r, target, h, val) {
 }
 function getTeamScram(r, sid, h) { const t = r.teamScores && r.teamScores[sid]; return t ? t[h] : null; }
 function teamScramCH(r, sid) {
-  const members = Object.values(S().players).filter((p) => p.squadId === sid);
-  return Eng.scrambleHandicap(members.map((p) => chFor(S(), p, r)), ruleHandicap(r).allowance);
+  // single source of truth: the engine's off-the-low team handicap
+  const t = teamScrambleRound(S(), r).teams.find((x) => x.squadId === sid);
+  return t ? t.ch : 0;
 }
 
 function autoPair(rid) {

@@ -80,9 +80,16 @@ export function teamScrambleRound(state, round) {
   const holes = (course && course.holes) || [];
   const N = holes.length;
   const { allowance } = ruleHandicap(round);
+  const membersOf = (sid) => Object.keys(state.players).filter((pid) => state.players[pid].squadId === sid).map((pid) => state.players[pid]);
+  // raw team handicap (25/20/15/10 blend) per squad, then play OFF THE LOW team:
+  // the lowest combined-handicap team is scratch, the rest get the difference.
+  const raw = {};
+  const withPlayers = [];
+  Object.keys(state.squads).forEach((sid) => { const m = membersOf(sid); raw[sid] = scrambleHandicap(m.map((p) => chFor(state, p, round)), allowance); if (m.length) withPlayers.push(sid); });
+  const low = withPlayers.length ? Math.min.apply(null, withPlayers.map((s) => raw[s])) : 0;
   const teams = Object.keys(state.squads).map((sid) => {
-    const members = Object.keys(state.players).filter((pid) => state.players[pid].squadId === sid).map((pid) => state.players[pid]);
-    const ch = scrambleHandicap(members.map((p) => chFor(state, p, round)), allowance);
+    const m = membersOf(sid);
+    const ch = Math.max(0, raw[sid] - low); // off the low team
     let gross = 0, net = 0, thru = 0, toPar = 0;
     const ts = (round.teamScores && round.teamScores[sid]) || {};
     holes.forEach((hole, i) => {
@@ -92,7 +99,7 @@ export function teamScrambleRound(state, round) {
       net += Number(g) - strokesOnHole(ch, hole.si, N);
     });
     const sq = state.squads[sid] || {};
-    return { squadId: sid, name: sq.name || sid, color: sq.color || '#888', ch, members: members.length, gross, net, thru, toPar };
+    return { squadId: sid, name: sq.name || sid, color: sq.color || '#888', ch, rawCh: raw[sid], members: m.length, gross, net, thru, toPar };
   });
   return { teams: rankTeams(teams), holes: N };
 }
