@@ -994,6 +994,7 @@ function printScorecards(rids) {
   rids.forEach((id) => {
     const r = round(id); const c = course(r && r.courseId);
     if (!r || !c) return;
+    if (r.format === 'teamscramble') { squadIds().forEach((sid, i) => cards.push(printTeamCard(r, c, sid, i))); return; }
     (r.pairings || []).forEach((p, i) => cards.push(printCard(r, c, p, i)));
   });
   if (!cards.length) { alert('No matchups with a course to print yet.'); return; }
@@ -1075,6 +1076,45 @@ function printCard(r, c, pairing, idx) {
     <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}</div></div>
     ${table}
     <div class="pc-foot">• = handicap stroke received. ${wonNote} Scorer ____________  Att. ____________</div>
+  </div>`;
+}
+
+/* shared print column layout (Hole / Par / Hcp rows + Out/In/Tot) */
+function pcardColumns(holes) {
+  const N = holes.length; const cols = [];
+  if (N === 18) {
+    for (let i = 0; i < 9; i++) cols.push({ h: i }); cols.push({ sum: 'Out', a: 0, b: 9 });
+    for (let i = 9; i < 18; i++) cols.push({ h: i }); cols.push({ sum: 'In', a: 9, b: 18 }); cols.push({ sum: 'Tot', a: 0, b: 18 });
+  } else { for (let i = 0; i < N; i++) cols.push({ h: i }); cols.push({ sum: 'Tot', a: 0, b: N }); }
+  const sumPar = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += holes[i].par; return s; };
+  const hdr = `<tr class="ph"><th class="pn">Hole</th>${cols.map((c) => `<th class="${c.sum ? 'sumcol' : ''}">${c.h != null ? c.h + 1 : c.sum}</th>`).join('')}</tr>`;
+  const parR = `<tr class="pp"><td class="pn">Par</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].par : sumPar(c.a, c.b)}</td>`).join('')}</tr>`;
+  const siR = `<tr class="ps"><td class="pn">Hcp</td>${cols.map((c) => `<td class="${c.sum ? 'sumcol' : ''}">${c.h != null ? holes[c.h].si : ''}</td>`).join('')}</tr>`;
+  return { cols, hdr, parR, siR };
+}
+
+/* one printable card per TEAM for a team-scramble round */
+function printTeamCard(r, c, sid, idx) {
+  const st = S(); const holes = c.holes; const N = holes.length;
+  const sq = squad(sid); const color = sq ? (sq.color || '#888') : '#888';
+  const ch = teamScramCH(r, sid);
+  const members = Object.values(st.players).filter((p) => p.squadId === sid);
+  const memNames = members.map((p) => esc(p.name) + ' <span class="sub">(' + chFor(st, p, r) + ')</span>').join(' · ');
+  const { cols, hdr, parR, siR } = pcardColumns(holes);
+  const rule = ruleHandicap(r);
+  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · team hcp 25/20/15/10${rule.allowance !== 100 ? ' @ ' + rule.allowance + '%' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
+  const dotRow = (label, withDots, cls) => `<tr class="${cls}"><td class="pn ${cls}-lbl"><span class="cdot" style="background:${color}"></span>${esc(label)}</td>${cols.map((cc) => {
+    if (cc.sum) return '<td class="sumcol"></td>';
+    const stk = withDots ? Eng.strokesOnHole(ch, holes[cc.h].si, N) : 0;
+    return `<td class="cell">${stk > 0 ? `<span class="sdot">${'•'.repeat(stk)}</span>` : ''}</td>`;
+  }).join('')}</tr>`;
+  const body = dotRow('Team gross', true, 'ptgross') + dotRow('Team net', false, 'ptnet');
+  const table = `<table class="pcard">${hdr}${parR}${siR}${body}</table>`;
+  return `<div class="print-card">
+    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · CH ${ch}</div></div>
+    <div class="pc-sub" style="margin:2px 0 4px">${memNames}</div>
+    ${table}
+    <div class="pc-foot">• = team handicap stroke received. Write the team's gross each hole; net = gross − strokes. Scorer ____________</div>
   </div>`;
 }
 

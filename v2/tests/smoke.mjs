@@ -127,6 +127,7 @@ if (tsc) fireChange({ action: 'card-score', rid: 'r3', target: tsc[1], h: tsc[2]
 fireClick({ action: 'score-mode', mode: 'hole' });
 fireClick({ action: 'tab', tab: 'standings' }); fireClick({ action: 'scope', scope: 'r3' }); check('teamscramble-standings');
 fireClick({ action: 'tab', tab: 'home' }); check('teamscramble-home');
+try { fireClick({ action: 'print-cards', rid: 'r3' }); console.log('ok teamscramble print-cards'); } catch (e) { errors++; console.log('TS PRINT ERR', e.message); }
 fireClick({ action: 'setup-tab', tab: 'rounds' }); fireChange({ action: 'round-format', id: 'r3' }, 'shamble');
 // course editor + tee selection
 fireClick({ action: 'add-course' }); check('add-course');
