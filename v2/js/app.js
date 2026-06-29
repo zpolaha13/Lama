@@ -1097,12 +1097,25 @@ function pcardColumns(holes) {
 function printTeamCard(r, c, sid, idx) {
   const st = S(); const holes = c.holes; const N = holes.length;
   const sq = squad(sid); const color = sq ? (sq.color || '#888') : '#888';
-  const ch = teamScramCH(r, sid);
-  const members = Object.values(st.players).filter((p) => p.squadId === sid);
+  const tr = teamScrambleRound(st, r);
+  const t = tr.teams.find((x) => x.squadId === sid) || { ch: 0, rawCh: 0 };
+  const ch = t.ch;
+  const allowance = ruleHandicap(r).allowance;
+  // members sorted low→high so they line up with the 25/20/15/10 weighting
+  const members = Object.values(st.players).filter((p) => p.squadId === sid).sort((a, b) => chFor(st, a, r) - chFor(st, b, r));
   const memNames = members.map((p) => esc(p.name) + ' <span class="sub">(' + chFor(st, p, r) + ')</span>').join(' · ');
+  // explicit team-handicap calculation
+  const W = ({ 1: [1], 2: [0.35, 0.15], 3: [0.30, 0.20, 0.10], 4: [0.25, 0.20, 0.15, 0.10] })[members.length] || [0.25, 0.20, 0.15, 0.10];
+  let blend = 0; const parts = [];
+  members.forEach((p, i) => { if (i < W.length) { const v = chFor(st, p, r); blend += W[i] * v; parts.push(Math.round(W[i] * 100) + '%×' + v); } });
+  const low = t.rawCh - t.ch;
+  const calc = `${parts.join(' + ')} = ${(Math.round(blend * 100) / 100)}`
+    + (allowance !== 100 ? ` ×${allowance}%` : '')
+    + ` → ${t.rawCh} raw`
+    + (low > 0 ? ` − low team ${low} = <b>${ch}</b>` : ` (lowest team) = <b>0</b>`)
+    + ` stroke${ch === 1 ? '' : 's'}`;
   const { cols, hdr, parR, siR } = pcardColumns(holes);
-  const rule = ruleHandicap(r);
-  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)} · team hcp 25/20/15/10 off low${rule.allowance !== 100 ? ' @ ' + rule.allowance + '%' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
+  const meta = `${esc(c.name)} · ${esc(fmtInfo(r.format).label)}${allowance !== 100 ? ' @ ' + allowance + '%' : ''}${r.date ? ' · ' + esc(r.date) : ''}`;
   const scoreRow = `<tr class="ptgross"><td class="pn ptgross-lbl"><span class="cdot" style="background:${color}"></span>Score</td>${cols.map((cc) => {
     if (cc.sum) return '<td class="sumcol"></td>';
     const stk = Eng.strokesOnHole(ch, holes[cc.h].si, N);
@@ -1110,8 +1123,9 @@ function printTeamCard(r, c, sid, idx) {
   }).join('')}</tr>`;
   const table = `<table class="pcard">${hdr}${parR}${siR}${scoreRow}</table>`;
   return `<div class="print-card">
-    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · CH ${ch}</div></div>
-    <div class="pc-sub" style="margin:2px 0 4px">${memNames}</div>
+    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · <b>CH ${ch}</b></div></div>
+    <div class="pc-sub" style="margin:2px 0 2px">${memNames}</div>
+    <div class="pc-calc"><b>Team handicap:</b> ${calc}</div>
     ${table}
     <div class="pc-foot">• = handicap stroke (off the low team). Write one team score per hole. Scorer ____________</div>
   </div>`;
