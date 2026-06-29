@@ -116,6 +116,18 @@ fireChange({ action: 'round-holepts', id: 'r1' }, '0.5');
 fireChange({ action: 'round-matchpts', id: 'r1' }, '1'); check('round-scoring-holes');
 fireClick({ action: 'tab', tab: 'standings' }); fireClick({ action: 'scope', scope: 'r1' }); check('standings-holes');
 fireChange({ action: 'round-psys', id: 'r1' }, 'match');
+// team scramble: switch a round to it, enter team scores, view leaderboard + score entry
+fireClick({ action: 'setup-tab', tab: 'rounds' });
+fireChange({ action: 'round-format', id: 'r3' }, 'teamscramble'); check('round-teamscramble-setup');
+fireClick({ action: 'tab', tab: 'rounds' }); fireClick({ action: 'open-round', id: 'r3' }); check('teamscramble-board');
+fireClick({ action: 'enter-scores', rid: 'r3' }); check('teamscramble-score');
+fireClick({ action: 'score-mode', mode: 'card' }); check('teamscramble-card');
+const tsc = [...appEl.innerHTML.matchAll(/data-action="card-score"[^>]*data-target="(tscram:[^"]+)"[^>]*data-h="(\d+)"/g)][0];
+if (tsc) fireChange({ action: 'card-score', rid: 'r3', target: tsc[1], h: tsc[2] }, '4');
+fireClick({ action: 'score-mode', mode: 'hole' });
+fireClick({ action: 'tab', tab: 'standings' }); fireClick({ action: 'scope', scope: 'r3' }); check('teamscramble-standings');
+fireClick({ action: 'tab', tab: 'home' }); check('teamscramble-home');
+fireClick({ action: 'setup-tab', tab: 'rounds' }); fireChange({ action: 'round-format', id: 'r3' }, 'shamble');
 // course editor + tee selection
 fireClick({ action: 'add-course' }); check('add-course');
 fireChange({ action: 'tee-rating', cid: 'legacy', id: 'legacy-blue' }, '72.3');

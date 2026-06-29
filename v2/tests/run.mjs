@@ -1,6 +1,6 @@
 /* Node test runner for the v2 engine + standings. Run: node tests/run.mjs */
 import * as G from '../js/engine/golf.js';
-import { computeStandings, resolveRound, chFor, matchHandicaps, effectiveCH } from '../js/engine/standings.js';
+import { computeStandings, resolveRound, chFor, matchHandicaps, effectiveCH, teamScrambleRound } from '../js/engine/standings.js';
 import { diffPaths } from '../js/store.js';
 import { toCSV, fromCSV } from '../js/engine/csv.js';
 import { sampleTournament } from '../js/seed.js';
@@ -207,6 +207,34 @@ eq(diffPaths({ a: { x: 1, y: 2 } }, { a: { x: 1 } }, '', {}), { 'a/y': null }, '
 eq(diffPaths({ p: [1, 2] }, { p: [1, 2, 3] }, '', {}), { p: [1, 2, 3] }, 'diff: array atomic');
 // no change -> empty
 eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = empty');
+
+/* ---------------- team scramble (3+ teams, low net leaderboard) ---------------- */
+{
+  const H = Array.from({ length: 18 }, (_, i) => ({ par: 4, si: i + 1 }));
+  const mk = (id, idx, sq) => [id, { id, name: id, index: idx, squadId: sq, defaultTeeId: 't' }];
+  const ts = {
+    tournament: { weightMode: 'true', roundOrder: ['r1'] },
+    squads: { t1: { name: 'T1' }, t2: { name: 'T2' }, t3: { name: 'T3' } },
+    players: Object.fromEntries([
+      mk('a1', 5, 't1'), mk('a2', 10, 't1'), mk('a3', 15, 't1'), mk('a4', 20, 't1'),
+      mk('b1', 6, 't2'), mk('b2', 11, 't2'), mk('b3', 16, 't2'), mk('b4', 21, 't2'),
+      mk('c1', 8, 't3'), mk('c2', 12, 't3'), mk('c3', 18, 't3'), mk('c4', 24, 't3'),
+    ]),
+    courses: { co: { id: 'co', tees: { t: { name: 'T', rating: 72, slope: 113 } }, holes: H } },
+    rounds: { r1: { id: 'r1', name: 'Scr', courseId: 'co', format: 'teamscramble', defaultTeeId: 't', scoringRule: { handicapAllowance: 100, handicapMode: 'absolute' }, teamScores: {}, scores: {} } },
+  };
+  const set = (sid, v) => { ts.rounds.r1.teamScores[sid] = {}; for (let h = 0; h < 18; h++) ts.rounds.r1.teamScores[sid][h] = v; };
+  set('t1', 4); set('t2', 5); set('t3', 4); // t1 CH 8 net 64, t2 CH 8 net 82, t3 CH 10 net 62
+  const tr = teamScrambleRound(ts, ts.rounds.r1);
+  const t3 = tr.teams.find((t) => t.squadId === 't3');
+  eq(t3.ch, 10, 'team scramble: 25/20/15/10 handicap (8,12,18,24)');
+  eq(t3.net, 62, 'team scramble: net = gross - team strokes');
+  eq(tr.teams[0].squadId, 't3', 'team scramble: low net ranks first');
+  eq(tr.teams[0].place, 1, 'team scramble: leader is place 1');
+  const sd = computeStandings(ts);
+  eq(sd.strokePlay, true, 'team scramble: pure-scramble tournament is stroke play');
+  eq(sd.teamLeaderboard[0].squadId, 't3', 'team scramble: overall leaderboard ranks low net first');
+}
 
 /* ---------------- hole + match point system ---------------- */
 {

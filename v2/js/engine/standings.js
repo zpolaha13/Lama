@@ -9,7 +9,7 @@
  * ========================================================================= */
 
 import {
-  courseHandicap, bestBallNets, scrambleNets, scrambleHandicap,
+  courseHandicap, bestBallNets, scrambleNets, scrambleHandicap, strokesOnHole,
   matchFromNets, playerRoundTotals, roundHalf,
 } from './golf.js';
 
@@ -58,11 +58,58 @@ function getTeamScore(round, pairingId, side, h) {
   return t && t[side] ? t[side][h] : null;
 }
 
-/* Did anyone enter any score in this round? */
+/* Did anyone enter any score in this round? Handles per-player scores, 2-sided
+ * scramble teamScores (pairing -> A/B -> hole) AND team-scramble (squad -> hole). */
 function roundHasScores(round) {
   if (round.scores) for (const pid in round.scores) for (const h in round.scores[pid]) if (round.scores[pid][h] != null) return true;
-  if (round.teamScores) for (const g in round.teamScores) for (const s in round.teamScores[g]) for (const h in round.teamScores[g][s]) if (round.teamScores[g][s][h] != null) return true;
+  if (round.teamScores) for (const k in round.teamScores) {
+    const v = round.teamScores[k];
+    for (const k2 in v) {
+      const v2 = v[k2];
+      if (v2 != null && typeof v2 === 'object') { for (const h in v2) if (v2[h] != null) return true; }
+      else if (v2 != null) return true; // team-scramble: squad -> hole -> score
+    }
+  }
   return false;
+}
+
+/* Team-scramble (low net, N teams): each squad plays one ball; rank by net.
+ * teamScores[squadId][holeIdx] = team gross. Returns ranked team rows. */
+export function teamScrambleRound(state, round) {
+  const course = state.courses[round.courseId];
+  const holes = (course && course.holes) || [];
+  const N = holes.length;
+  const { allowance } = ruleHandicap(round);
+  const teams = Object.keys(state.squads).map((sid) => {
+    const members = Object.keys(state.players).filter((pid) => state.players[pid].squadId === sid).map((pid) => state.players[pid]);
+    const ch = scrambleHandicap(members.map((p) => chFor(state, p, round)), allowance);
+    let gross = 0, net = 0, thru = 0, toPar = 0;
+    const ts = (round.teamScores && round.teamScores[sid]) || {};
+    holes.forEach((hole, i) => {
+      const g = ts[i];
+      if (g == null || g === '' || isNaN(g)) return;
+      thru++; gross += Number(g); toPar += Number(g) - hole.par;
+      net += Number(g) - strokesOnHole(ch, hole.si, N);
+    });
+    const sq = state.squads[sid] || {};
+    return { squadId: sid, name: sq.name || sid, color: sq.color || '#888', ch, members: members.length, gross, net, thru, toPar };
+  });
+  return { teams: rankTeams(teams), holes: N };
+}
+
+/* Rank teams by net (low wins); not-started teams sink to the bottom; ties share
+ * a place. Adds .place and .behind (strokes behind the leader). */
+function rankTeams(teams) {
+  const out = teams.slice().sort((a, b) => (a.thru === 0) - (b.thru === 0) || a.net - b.net || a.gross - b.gross);
+  const leader = out.find((t) => t.thru > 0);
+  let place = 0, prevNet = null;
+  out.forEach((t, i) => {
+    if (t.thru === 0) { t.place = null; t.behind = null; return; }
+    if (t.net !== prevNet) { place = i + 1; prevNet = t.net; }
+    t.place = place;
+    t.behind = leader ? t.net - leader.net : 0;
+  });
+  return out;
 }
 
 /* ---- handicap allowance / basis ----
@@ -164,6 +211,19 @@ export function matchPoints(res, opts) {
 
 /* ---- resolve a whole round ---- */
 export function resolveRound(state, round) {
+  if (round.format === 'teamscramble') {
+    const tr = teamScrambleRound(state, round);
+    let status = round.status;
+    if (!status || status === 'auto') {
+      status = !roundHasScores(round) ? 'upcoming'
+        : (tr.holes > 0 && tr.teams.every((t) => t.thru === tr.holes)) ? 'final' : 'live';
+    }
+    return {
+      roundId: round.id, format: 'teamscramble', teamScramble: tr, status,
+      matches: [], raw: {}, contribution: {}, pointsAvailable: 0, availableWeighted: 0,
+      mode: state.tournament.weightMode || 'true', pointSystem: 'leaderboard',
+    };
+  }
   const matches = [];
   const raw = {};
   Object.keys(state.squads).forEach((sid) => (raw[sid] = 0));
@@ -266,7 +326,26 @@ export function computeStandings(state) {
     if (cup[leader] >= target) clinched = leader;
   }
 
-  return { cup, rounds, target, totalAvailable, clinched, leader, weightMode: state.tournament.weightMode || 'true' };
+  // Team-scramble (stroke play): build an overall team leaderboard across all
+  // team-scramble rounds. If every round is team-scramble, the tournament IS a
+  // leaderboard, so the hero/standings show it instead of the 2-side cup.
+  const tsRounds = rounds.filter((r) => r.format === 'teamscramble');
+  let teamLeaderboard = null;
+  const strokePlay = rounds.length > 0 && rounds.every((r) => r.format === 'teamscramble');
+  if (tsRounds.length) {
+    const agg = {};
+    Object.keys(state.squads).forEach((sid) => {
+      const sq = state.squads[sid] || {};
+      agg[sid] = { squadId: sid, name: sq.name || sid, color: sq.color || '#888', gross: 0, net: 0, thru: 0, toPar: 0 };
+    });
+    tsRounds.forEach((r) => r.teamScramble.teams.forEach((t) => {
+      const a = agg[t.squadId]; if (!a) return;
+      a.gross += t.gross; a.net += t.net; a.thru += t.thru; a.toPar += t.toPar;
+    }));
+    teamLeaderboard = rankTeams(Object.values(agg));
+  }
+
+  return { cup, rounds, target, totalAvailable, clinched, leader, weightMode: state.tournament.weightMode || 'true', teamLeaderboard, strokePlay };
 }
 
 /* Per-player totals for a round (for stroke detail / My Card). */

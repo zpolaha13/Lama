@@ -132,6 +132,15 @@ function hero() {
     return `<div class="hero"><div class="hero-top"><span class="hero-title">${name}</span>${heroActions()}</div></div>`;
   }
   const stand = computeStandings(st);
+  if (stand.strokePlay && stand.teamLeaderboard) {
+    const lead = stand.teamLeaderboard.find((t) => t.thru > 0);
+    const sub = lead ? `${esc(lead.name)} leads · ${fmtToPar(lead.toPar)}` : 'No scores yet';
+    return `<div class="hero ${heroCompact ? 'hero-compact' : ''}">
+      <div class="hero-top">${heroActions()}</div>
+      <div class="cup"><div class="cup-mid"><div class="hero-name">${name}</div><div class="target num">${sub}</div></div></div>
+      <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
+    </div>`;
+  }
   const ids = squadIds();
   const a = ids[0], b = ids[1];
   const sa = squad(a), sb = squad(b);
@@ -236,7 +245,12 @@ function viewStandings() {
     .concat(stand.rounds.map((r) => `<button data-action="scope" data-scope="${r.roundId}" class="${ui.scope === r.roundId ? 'active' : ''}">${esc(round(r.roundId).name.replace(/^Round \d+ — /, ''))}</button>`));
   let body;
   if (ui.scope === 'overall') {
-    body = weightToggle(stand) + breakdownCard(stand, true);
+    if (stand.strokePlay && stand.teamLeaderboard) {
+      const totalHoles = stand.rounds.reduce((s, r) => s + (r.teamScramble ? r.teamScramble.holes : 0), 0);
+      body = teamLeaderboardCard(stand.teamLeaderboard, totalHoles, 'Overall');
+    } else {
+      body = weightToggle(stand) + breakdownCard(stand, true);
+    }
   } else {
     const r = stand.rounds.find((x) => x.roundId === ui.scope) || stand.rounds[0];
     body = roundBoard(r);
@@ -292,7 +306,7 @@ function viewRounds() {
       <div class="head"><div><div class="rn">${esc(r.name)}</div><div class="meta">${c ? esc(c.name) : 'No course'} · ${fmtInfo(r.format).label}</div></div>
         <span class="status ${rr.status}">${rr.status === 'live' ? '<span class="live-pulse"></span>Live' : rr.status}</span></div>
       <div class="expl">${esc(fmtInfo(r.format).explainer)}</div>
-      <div class="ptsavail">${rr.pointsAvailable} points in play</div>
+      <div class="ptsavail">${rr.teamScramble ? 'Low team net wins' : rr.pointsAvailable + ' points in play'}</div>
     </button>`;
   }).join('');
   return `<h2 style="margin:0 0 12px">Schedule</h2>${cards}`;
@@ -310,7 +324,7 @@ function viewRoundDetail() {
         <div><h2 style="margin:0">${esc(r.name)}</h2><div class="muted" style="font-size:13px">${c ? esc(c.name) : ''} · ${fmtInfo(r.format).label}</div></div>
         <span class="status ${rr.status}">${rr.status === 'live' ? '<span class="live-pulse"></span>Live' : rr.status}</span>
       </div>
-      <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} <b>${rr.pointsAvailable} points in play</b> · ${esc(hcpLabel(r))}.</div>
+      <div class="tip" style="margin-top:12px">${esc(fmtInfo(r.format).explainer)} ${rr.teamScramble ? '<b>Low team net wins</b>' : '<b>' + rr.pointsAvailable + ' points in play</b>'} · ${esc(hcpLabel(r))}.</div>
       <div class="btn-row"><button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
       <button class="btn secondary" data-action="print-cards" data-rid="${r.id}">🖨 Print cards</button></div>
     </div>
@@ -318,10 +332,29 @@ function viewRoundDetail() {
     ${skinsCard(r)}`;
 }
 
-/* round leaderboard (match list) */
+/* round leaderboard (match list, or team leaderboard for team-scramble) */
 function roundBoard(rr) {
-  const r = round(rr.roundId);
+  if (rr.teamScramble) return teamLeaderboardCard(rr.teamScramble.teams, rr.teamScramble.holes, 'Leaderboard');
   return `<div class="card"><h2>Matches</h2>${matchList(rr)}</div>`;
+}
+
+function teamLeaderboardCard(teams, holes, title) {
+  const rows = teams.map((t) => {
+    const started = t.thru > 0;
+    return `<tr>
+      <td class="c">${t.place ? '<b>' + t.place + '</b>' : '—'}</td>
+      <td>${sdot(t.squadId)} <b>${esc(t.name)}</b></td>
+      <td class="c num">${started ? t.gross : '—'}</td>
+      <td class="c num"><b>${started ? t.net : '—'}</b></td>
+      <td class="c num">${started ? fmtToPar(t.toPar) : ''}</td>
+      <td class="r muted">${started ? (holes && t.thru === holes ? 'F' : 'thru ' + t.thru) : ''}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card breakdown"><h2>${esc(title || 'Leaderboard')}</h2>
+    <table><thead><tr><th class="c">Pos</th><th>Team</th><th class="c">Gross</th><th class="c">Net</th><th class="c">±</th><th class="r">Thru</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="muted" style="font-size:12px;margin-top:8px">Low team <b>net</b> wins. Net uses the team handicap (25/20/15/10).</div>
+  </div>`;
 }
 
 /* ---------------- SKINS ---------------- */
@@ -342,6 +375,7 @@ function roundPlayersCH(r) {
 function hcpLabel(r) {
   const { allowance, mode } = ruleHandicap(r);
   if (r.format === 'scramble') return 'Team handicap (35/15)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
+  if (r.format === 'teamscramble') return 'Team handicap (25/20/15/10)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
   const pct = allowance === 100 ? 'Full' : allowance + '%';
   return pct + (mode === 'relative' ? ' off the low' : ' handicap');
 }
@@ -358,7 +392,7 @@ function computeRoundSkins(r) {
 }
 
 function skinsCard(r) {
-  if (r.format === 'scramble') {
+  if (r.format === 'scramble' || r.format === 'teamscramble') {
     return `<div class="card"><h2>Skins</h2><div class="muted">Skins don't apply to a scramble (one team ball per hole).</div></div>`;
   }
   const cfg = skinsCfg(r.id);
@@ -399,7 +433,7 @@ function tripMoney() {
   const money = {};
   roundIds().forEach((id) => {
     const r = round(id);
-    if (r.format === 'scramble' || !skinsCfg(id).enabled) return;
+    if (r.format === 'scramble' || r.format === 'teamscramble' || !skinsCfg(id).enabled) return;
     const { pay } = computeRoundSkins(r);
     Object.keys(pay.payouts).forEach((pid) => { money[pid] = (money[pid] || 0) + pay.payouts[pid]; });
   });
@@ -438,6 +472,7 @@ function viewScore() {
   if (!r) { ui.view = 'rounds'; return viewRounds(); }
   const c = course(r.courseId);
   if (!c) return '<div class="card"><div class="empty">This round has no course.</div></div>';
+  if (r.format === 'teamscramble') return viewScoreTeams(r, c);
   const pairings = r.pairings || [];
   if (!pairings.length) return '<div class="card"><div class="empty">No matchups in this round.</div></div>';
   if (!ui.scorePairingId || !pairings.find((p) => p.id === ui.scorePairingId)) ui.scorePairingId = defaultPairing(r).id;
@@ -538,6 +573,11 @@ function scoreCard(r, pairing, c) {
       return { name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h) };
     });
   }
+  return cardTable(r, holes, units);
+}
+
+/* shared full-card table builder: units = [{name, sdotId, ch, target, get(h)}] */
+function cardTable(r, holes, units) {
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
     for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
@@ -565,6 +605,38 @@ function scoreCard(r, pairing, c) {
   if (holes.length > 9) table += section(9, 18, 'In');
   table += `</table></div>`;
   return table;
+}
+
+/* team-scramble score entry: one row per team, no pairings */
+function viewScoreTeams(r, c) {
+  const teams = squadIds();
+  if (!teams.length) return '<div class="card"><div class="empty">Add teams in Setup → Players, then assign players to them.</div></div>';
+  const h = Math.max(0, Math.min(ui.holeIdx, c.holes.length - 1));
+  ui.holeIdx = h;
+  const hole = c.holes[h];
+  const modeSeg = `<div class="seg" style="margin:0 0 12px">
+    <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
+    <button data-action="score-mode" data-mode="card" class="${ui.scoreMode === 'card' ? 'active' : ''}">▦ Full card</button>
+  </div>`;
+  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button><div class="card">${modeSeg}`;
+  if (ui.scoreMode === 'card') {
+    const units = teams.map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, ch: teamScramCH(r, sid), target: `tscram:${sid}`, get: (hh) => getTeamScram(r, sid, hh) }));
+    return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">One row per team — enter the team's scramble score each hole. Net uses the team handicap (25/20/15/10).</div></div>`;
+  }
+  const units = teams.map((sid) => {
+    const ch = teamScramCH(r, sid);
+    const mem = Object.values(S().players).filter((p) => p.squadId === sid).map((p) => p.name).join(' / ');
+    return unitRow({ rid: r.id, target: `tscram:${sid}`, name: (squad(sid) ? squad(sid).name : sid) + ' — ' + mem, sdotId: sid, ch, val: getTeamScram(r, sid, h), hole, holes: c.holes.length });
+  }).join('');
+  return head + `
+      <div class="hole-nav">
+        <button data-action="hole" data-dir="-1" ${h === 0 ? 'disabled' : ''}>‹</button>
+        <div class="holeinfo"><div class="h num">HOLE ${h + 1} of ${c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
+        <button data-action="hole" data-dir="1" ${h === c.holes.length - 1 ? 'disabled' : ''}>›</button>
+      </div>
+      ${units}
+      <div class="muted" style="font-size:12px;text-align:center;margin-top:8px">One ball per team · tap the number to set par · −/+ to adjust</div>
+    </div>`;
 }
 
 function unitRow({ rid, target, name, sdotId, ch, val, hole, holes, tee }) {
@@ -845,6 +917,13 @@ function setupRounds() {
         const mp = sr.matchPoints != null ? sr.matchPoints : 1;
         const ppm = sr.pointsPerMatch != null ? sr.pointsPerMatch : 1;
         const nholes = (course(r.courseId) || {}).holes ? course(r.courseId).holes.length : 18;
+        if (r.format === 'teamscramble') {
+          return `<div class="grid2" style="margin-bottom:6px">
+            <div class="field"><label>Scoring</label><input value="Low team net wins" disabled></div>
+            <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
+          </div>
+          <div class="muted" style="font-size:12px;margin:-2px 0 8px">Each team plays one scramble ball; lowest team net wins. Team handicap = 25/20/15/10 of the four course handicaps${ruleHandicap(r).allowance !== 100 ? ' × ' + ruleHandicap(r).allowance + '%' : ''}.</div>`;
+        }
         const ptsFields = sys === 'holes'
           ? `<div class="field"><label>Pts / hole</label><input type="number" step="0.5" min="0" data-action="round-holepts" data-id="${id}" value="${hp}"></div>
              <div class="field"><label>Pts / match win</label><input type="number" step="0.5" min="0" data-action="round-matchpts" data-id="${id}" value="${mp}"></div>`
@@ -865,7 +944,9 @@ function setupRounds() {
       </div>
       ${sys === 'holes' ? `<div class="muted" style="font-size:12px;margin:-2px 0 8px">Each won hole = ${hp} pt (halves split), winning the match = ${mp} pt → up to <b>${(hp * nholes + mp)}</b> pts per match over ${nholes} holes.</div>` : ''}`;
       })()}
-      <label>Matchups</label>${pairEditor(r)}
+      ${r.format === 'teamscramble'
+        ? '<div class="muted" style="font-size:13px;margin-top:6px">Teams are your <b>squads</b> — make one squad per team in the <b>Players</b> tab and put 4 players on each. No matchups needed.</div>'
+        : '<label>Matchups</label>' + pairEditor(r)}
     </div>`; }).join('')}</div>`;
 }
 
@@ -1180,6 +1261,7 @@ function setPar(rid, target) {
 function readTarget(r, target, h) {
   const [kind, id, side] = target.split(':');
   if (kind === 'player') return r.scores && r.scores[id] ? r.scores[id][h] : null;
+  if (kind === 'tscram') { const t = r.teamScores && r.teamScores[id]; return t ? t[h] : null; }
   const tt = r.teamScores && r.teamScores[id]; return tt && tt[side] ? tt[side][h] : null;
 }
 function writeTarget(r, target, h, val) {
@@ -1187,10 +1269,18 @@ function writeTarget(r, target, h, val) {
   if (kind === 'player') {
     r.scores = r.scores || {}; r.scores[id] = r.scores[id] || {};
     if (val == null) delete r.scores[id][h]; else r.scores[id][h] = val;
+  } else if (kind === 'tscram') {
+    r.teamScores = r.teamScores || {}; r.teamScores[id] = r.teamScores[id] || {};
+    if (val == null) delete r.teamScores[id][h]; else r.teamScores[id][h] = val;
   } else {
     r.teamScores = r.teamScores || {}; r.teamScores[id] = r.teamScores[id] || {}; r.teamScores[id][side] = r.teamScores[id][side] || {};
     if (val == null) delete r.teamScores[id][side][h]; else r.teamScores[id][side][h] = val;
   }
+}
+function getTeamScram(r, sid, h) { const t = r.teamScores && r.teamScores[sid]; return t ? t[h] : null; }
+function teamScramCH(r, sid) {
+  const members = Object.values(S().players).filter((p) => p.squadId === sid);
+  return Eng.scrambleHandicap(members.map((p) => chFor(S(), p, r)), ruleHandicap(r).allowance);
 }
 
 function autoPair(rid) {
