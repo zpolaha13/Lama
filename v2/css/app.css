@@ -128,6 +128,7 @@ td.c, th.c { text-align: center; }
 .thru { color: var(--muted); font-size: 13px; }
 
 /* breakdown table */
+.breakdown .thteam { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .breakdown td .pts { font-weight: 800; font-size: 16px; }
 .breakdown tr { cursor: pointer; }
 .breakdown tr:hover td { background: var(--surface); }

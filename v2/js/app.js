@@ -287,7 +287,7 @@ function breakdownCard(stand, full) {
       <td class="r"><span class="status ${r.status}">${r.status === 'live' ? 'Live' : r.status}</span></td>
     </tr>`;
   }).join('');
-  const head = ids.map((sid) => `<th class="c">${sdot(sid)}${esc(squad(sid).name.replace('Team ', ''))}</th>`).join('');
+  const head = ids.map((sid) => `<th class="c"><span class="thteam">${sdot(sid)}${esc(squad(sid).name.replace('Team ', ''))}</span></th>`).join('');
   return `<div class="card breakdown">
     ${full ? '' : '<h2>Tournament breakdown</h2>'}
     <table><thead><tr><th>Round</th><th class="c">Pts</th>${head}<th class="r">Status</th></tr></thead>
