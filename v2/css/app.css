@@ -314,4 +314,6 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
   .summary-doc table.sum-tbl th { background: #ececec; }
   .summary-doc table.sum-tbl td.l, .summary-doc table.sum-tbl th.l { text-align: left; }
   .summary-doc table.sum-tbl td.c { color: #777; }
+  .summary-doc .sum-sub2 { font-size: 10.5px; font-weight: 700; margin: 6px 0 2px; }
+  .summary-doc table.sum-tbl td.tt-t { white-space: nowrap; font-weight: 700; width: 1in; }
 }

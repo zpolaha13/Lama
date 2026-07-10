@@ -1175,19 +1175,33 @@ function printSummary() {
     const skins = cfg.enabled
       ? `On · $${cfg.value} buy-in · ${cfg.mode === 'gross' ? 'Gross' : 'Net ' + cfg.allow + '%'} · ${cfg.tie === 'split' ? 'split ties' : 'rollover'}`
       : 'Off';
+    // tee: round default + any per-player overrides
+    const teeName = (() => { const t = c && c.tees ? c.tees[r.defaultTeeId] : null; return t ? t.name : '—'; })();
+    const ov = r.defaultTeeId ? players.filter((p) => { try { const tid = resolveTeeId(st, p, r); return tid && tid !== r.defaultTeeId; } catch (e) { return false; } }) : [];
+    const overrideNote = ov.length ? `<div class="sum-note">Tee overrides: ${ov.map((p) => esc(p.name) + ' (' + esc(teeNameFor(p, r)) + ')').join(', ')}</div>` : '';
+    // tee times
+    const ttRows = (r.teeTimes || []).map((g) => `<tr><td class="tt-t">${esc(g.time || 'TBD')}</td><td class="l">${(g.players || []).map((id) => esc(player(id) ? player(id).name : '?')).join(', ')}</td></tr>`).join('');
+    const ttBlock = ttRows ? `<div class="sum-sub2">Tee times</div><table class="sum-tbl"><tbody>${ttRows}</tbody></table>` : '';
+    // matchups (labelled by real team names, derived from each side's players)
     let matchHtml;
     if (r.format === 'teamscramble') {
       const rows = sqs.map((sid) => { const mem = Object.values(st.players).filter((pp) => pp.squadId === sid).map((pp) => esc(pp.name)).join(', '); return `<tr><td class="l"><b>${esc(squad(sid) ? squad(sid).name : sid)}</b></td><td class="l">${mem || '—'}</td></tr>`; }).join('');
       matchHtml = `<table class="sum-tbl"><tbody>${rows}</tbody></table>`;
     } else {
       const nm = (ids) => (ids || []).map((x) => esc(player(x) ? player(x).name : '?')).join(' / ');
+      const sideSquadId = (key) => { for (const pr of (r.pairings || [])) { for (const id of (pr[key] || [])) { if (player(id)) return player(id).squadId; } } return null; };
+      const aid = sideSquadId('teamA'); const bid = sideSquadId('teamB');
+      const hdrA = aid && squad(aid) ? esc(squad(aid).name) : 'Side A';
+      const hdrB = bid && squad(bid) ? esc(squad(bid).name) : 'Side B';
       const rows = (r.pairings || []).map((pr, mi) => `<tr><td>${mi + 1}</td><td class="l">${nm(pr.teamA)}</td><td class="c">vs</td><td class="l">${nm(pr.teamB)}</td></tr>`).join('');
-      matchHtml = rows ? `<table class="sum-tbl"><thead><tr><th>#</th><th class="l">Side A</th><th></th><th class="l">Side B</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="sum-note">No matchups set.</div>';
+      matchHtml = rows ? `<div class="sum-sub2">Matchups</div><table class="sum-tbl"><thead><tr><th>#</th><th class="l">${hdrA}</th><th></th><th class="l">${hdrB}</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="sum-note">No matchups set.</div>';
     }
     return `<div class="sum-sec">
       <div class="sum-h2">R${i + 1} — ${esc(r.name.replace(/^Round \d+ — /, ''))}</div>
-      <div class="sum-meta">${c ? esc(c.name) : 'No course'} · ${esc(fmtInfo(r.format).label)}${r.date ? ' · ' + esc(r.date) : ''} · ${pts}</div>
+      <div class="sum-meta">${c ? esc(c.name) : 'No course'} · ${esc(teeName)} tees · ${esc(fmtInfo(r.format).label)}${r.date ? ' · ' + esc(r.date) : ''} · ${pts}</div>
       <div class="sum-rules"><b>Handicap:</b> ${esc(hcpLabel(r))}. &nbsp;&nbsp;<b>Scoring:</b> ${esc(summaryScoring(r))}. &nbsp;&nbsp;<b>Skins &amp; money:</b> ${esc(skins)}.</div>
+      ${overrideNote}
+      ${ttBlock}
       ${matchHtml}
     </div>`;
   }).join('');
