@@ -110,6 +110,7 @@ fireClick({ action: 'auto-pair', id: 'r1' }); check('auto-pair-12');
 fireChange({ action: 'round-ppm', id: 'r1' }, '2');
 fireChange({ action: 'round-hcpallow', id: 'r1' }, '80');
 fireChange({ action: 'round-hcpmode', id: 'r1' }, 'relative'); check('round-config');
+fireChange({ action: 'round-teetimes', id: 'r1' }, '1:00 PM Zach, Parker\n1:09 PM Bernie, Polo'); check('round-teetimes');
 // hole+match point system controls
 fireChange({ action: 'round-psys', id: 'r1' }, 'holes');
 fireChange({ action: 'round-holepts', id: 'r1' }, '0.5');

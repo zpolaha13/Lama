@@ -121,3 +121,15 @@ r2,Jordan|Lil Bernie,Ty|Mitchy
 r3,Parker|Lil Bernie,Zach|Blake
 r3,Jordan|Danny,Andrew|Mitchy
 r3,Polo|Bernie,Ty|Townsley
+
+#TEETIMES
+roundId,time,players
+r1,12:00 PM,Zach|Andrew|Jordan|Parker
+r1,12:09 PM,Bernie|Polo|Ty|Townsley
+r1,12:18 PM,Danny|Lil Bernie|Mitchy|Blake
+r2,8:55 AM,Parker|Polo|Andrew|Blake
+r2,9:05 AM,Bernie|Danny|Zach|Townsley
+r2,9:15 AM,Jordan|Lil Bernie|Ty|Mitchy
+r3,9:03 AM,Parker|Lil Bernie|Zach|Blake
+r3,9:12 AM,Jordan|Danny|Andrew|Mitchy
+r3,9:21 AM,Polo|Bernie|Ty|Townsley

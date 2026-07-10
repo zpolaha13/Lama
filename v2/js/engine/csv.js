@@ -144,7 +144,7 @@ export function fromCSV(text, warnings) {
         holePoints: (r.ptsPerHole !== '' && r.ptsPerHole != null) ? Number(r.ptsPerHole) : 0.5,
         matchPoints: (r.ptsMatchBonus !== '' && r.ptsMatchBonus != null) ? Number(r.ptsMatchBonus) : 1,
       },
-      pairings: [], scores: {}, teamScores: {}, teeOverrides: {},
+      pairings: [], scores: {}, teamScores: {}, teeOverrides: {}, teeTimes: [],
     };
     st.tournament.roundOrder.push(rid);
     const val = Number(r.skinsValue || r.skins || 0);
@@ -165,6 +165,14 @@ export function fromCSV(text, warnings) {
     const rid = slug(r.roundId); const rd = st.rounds[rid];
     if (!rd) { if (r.roundId) warnings.push('Pairing for unknown round "' + r.roundId + '" was skipped.'); return; }
     rd.pairings.push({ id: uid('m'), teamA: toIds(r.teamA), teamB: toIds(r.teamB) });
+  });
+
+  // tee times — one group per row: roundId, time, players (by name)
+  (S.TEETIMES || []).forEach((g) => {
+    const rid = slug(g.roundId); const rd = st.rounds[rid];
+    if (!rd) return;
+    rd.teeTimes = rd.teeTimes || [];
+    rd.teeTimes.push({ time: g.time || '', players: toIds(g.players) });
   });
 
   return st;
@@ -228,6 +236,13 @@ export function toCSV(st) {
   order.forEach((rid) => {
     const r = st.rounds[rid]; if (!r) return;
     (r.pairings || []).forEach((p) => row([rid, playerNames(st, p.teamA), playerNames(st, p.teamB)]));
+  });
+  L.push('');
+
+  L.push('#TEETIMES'); L.push('roundId,time,players');
+  order.forEach((rid) => {
+    const r = st.rounds[rid]; if (!r) return;
+    (r.teeTimes || []).forEach((g) => row([rid, g.time || '', playerNames(st, g.players)]));
   });
   L.push('');
 

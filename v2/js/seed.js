@@ -102,14 +102,29 @@ export function sampleTournament() {
       r1: {
         id: 'r1', name: 'Round 1 — Legacy', courseId: 'legacy', format: 'singles', defaultTeeId: 'legacy-blue',
         date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r1pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        teeTimes: [
+          { time: '12:00 PM', players: ['zach', 'andrew', 'jordan', 'parker'] },
+          { time: '12:09 PM', players: ['bernie', 'polo', 'ty', 'townsley'] },
+          { time: '12:18 PM', players: ['danny', 'lilbernie', 'mitchy', 'blake'] },
+        ],
       },
       r2: {
         id: 'r2', name: 'Round 2 — Mid South', courseId: 'midsouth', format: 'fourball', defaultTeeId: 'mid-blue',
         date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r2pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        teeTimes: [
+          { time: '8:55 AM', players: ['parker', 'polo', 'andrew', 'blake'] },
+          { time: '9:05 AM', players: ['bernie', 'danny', 'zach', 'townsley'] },
+          { time: '9:15 AM', players: ['jordan', 'lilbernie', 'ty', 'mitchy'] },
+        ],
       },
       r3: {
         id: 'r3', name: 'Round 3 — Talamore', courseId: 'talamore', format: 'shamble', defaultTeeId: 'tal-blue',
         date: '', status: 'auto', scoringRule: { handicapAllowance: 75, handicapMode: 'absolute' }, pairings: r3pairings, scores: {}, teamScores: {}, teeOverrides: {},
+        teeTimes: [
+          { time: '9:03 AM', players: ['parker', 'lilbernie', 'zach', 'blake'] },
+          { time: '9:12 AM', players: ['jordan', 'danny', 'andrew', 'mitchy'] },
+          { time: '9:21 AM', players: ['polo', 'bernie', 'ty', 'townsley'] },
+        ],
       },
     },
     skins: {

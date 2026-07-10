@@ -228,6 +228,11 @@ function actionCard(stand) {
         msg = `${esc(r.name)} — ${fmtInfo(r.format).short}` + (partnerIds.length ? `<br>You + ${names(partnerIds)} vs ${names(oppIds)}` : `<br>You vs ${names(oppIds)}`);
         cta = `<button class="btn" data-action="enter-scores" data-rid="${r.id}" data-pid="${myPairing.id}">Enter scores</button>`;
       }
+      const tt = myTeeTime(r);
+      if (tt) {
+        if (msg) { msg += `<br><b>⛳ Tee time: ${esc(tt.time)}</b>`; }
+        else { lbl = target.status === 'live' ? 'Live now' : 'Up next'; msg = `${esc(r.name)}<br><b>⛳ Tee time: ${esc(tt.time)}</b>`; cta = `<button class="btn" data-action="open-round" data-id="${r.id}">Open round →</button>`; }
+      }
     }
   } else {
     msg = 'Tap below to pick which player you are — then your matchups and "what to do now" show up here.';
@@ -313,6 +318,41 @@ function viewRounds() {
 }
 
 /* ---------------- ROUND DETAIL ---------------- */
+/* ---------------- tee times ---------------- */
+function parseTeeTimes(text) {
+  const nameToId = {};
+  Object.values(S().players).forEach((p) => { nameToId[p.name.toLowerCase()] = p.id; });
+  return String(text || '').split(/\r?\n/).map((raw) => {
+    const line = raw.trim();
+    if (!line) return null;
+    const m = line.match(/^(\d{1,2}:\d{2})\s*([ap])\.?\s*m\.?\b\s*(.*)$/i);
+    let time = '', rest = line;
+    if (m) { time = m[1] + ' ' + m[2].toUpperCase() + 'M'; rest = m[3]; }
+    const ids = rest.split(/[,;/]+/).map((s) => s.trim()).filter(Boolean).map((n) => nameToId[n.toLowerCase()]).filter(Boolean);
+    if (!time && !ids.length) return null;
+    return { time, players: ids };
+  }).filter(Boolean);
+}
+function teeTimesText(r) {
+  return (r.teeTimes || []).map((g) => ((g.time ? g.time + ' ' : '') + (g.players || []).map((id) => (player(id) ? player(id).name : '?')).join(', '))).join('\n');
+}
+function myTeeTime(r) {
+  const me = meId();
+  if (!me) return null;
+  return (r.teeTimes || []).find((g) => (g.players || []).includes(me)) || null;
+}
+function teeTimesCard(r) {
+  const tt = r.teeTimes || [];
+  if (!tt.length) return '';
+  const me = meId();
+  const rows = tt.map((g) => {
+    const mine = me && (g.players || []).includes(me);
+    const names = (g.players || []).map((id) => { const p = player(id); return p ? `<span class="tt-p">${sdot(p.squadId)}${esc(p.name)}</span>` : '?'; }).join('');
+    return `<div class="tt-row ${mine ? 'mine' : ''}"><div class="tt-time num">${esc(g.time || 'TBD')}</div><div class="tt-names">${names}${mine ? '<span class="tt-you">You</span>' : ''}</div></div>`;
+  }).join('');
+  return `<div class="card"><h2>Tee times</h2>${rows}</div>`;
+}
+
 function viewRoundDetail() {
   const r = round(ui.scope) || round(roundIds()[0]);
   if (!r) return viewRounds();
@@ -328,6 +368,7 @@ function viewRoundDetail() {
       <div class="btn-row"><button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>
       <button class="btn secondary" data-action="print-cards" data-rid="${r.id}">🖨 Print cards</button></div>
     </div>
+    ${teeTimesCard(r)}
     ${roundBoard(rr)}
     ${skinsCard(r)}`;
 }
@@ -947,6 +988,10 @@ function setupRounds() {
       ${r.format === 'teamscramble'
         ? '<div class="muted" style="font-size:13px;margin-top:6px">Teams are your <b>squads</b> — make one squad per team in the <b>Players</b> tab and put 4 players on each. No matchups needed.</div>'
         : '<label>Matchups</label>' + pairEditor(r)}
+      <details data-dk="tt-${id}" ${ui.openDetails.has('tt-' + id) ? 'open' : ''} style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-size:13px">Tee times${(r.teeTimes || []).length ? ' (' + r.teeTimes.length + ')' : ''}</summary>
+        <textarea class="tt-edit" data-action="round-teetimes" data-id="${id}" rows="4" placeholder="12:00 PM Zach, Andrew, Jordan, Parker">${esc(teeTimesText(r))}</textarea>
+        <div class="muted" style="font-size:12px">One group per line: <b>time</b> then names (matched to your players). Paste straight from your tee-time email.</div>
+      </details>
     </div>`; }).join('')}</div>`;
 }
 
@@ -1249,6 +1294,7 @@ app.addEventListener('change', (e) => {
     'round-course': () => Store.update((s) => { s.rounds[t.dataset.id].courseId = v; }),
     'round-ppm': () => ruleSet(t.dataset.id, { pointsPerMatch: v === '' ? 1 : Number(v) }),
     'round-psys': () => { ruleSet(t.dataset.id, { pointSystem: v }); try { e.target.blur(); } catch (err) {} render(); },
+    'round-teetimes': () => { const tt = parseTeeTimes(v); Store.update((s) => { s.rounds[t.dataset.id].teeTimes = tt; }); },
     'round-holepts': () => ruleSet(t.dataset.id, { holePoints: v === '' ? 0.5 : Math.max(0, Number(v)) }),
     'round-matchpts': () => ruleSet(t.dataset.id, { matchPoints: v === '' ? 1 : Math.max(0, Number(v)) }),
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),

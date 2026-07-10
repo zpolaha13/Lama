@@ -274,6 +274,22 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   eq(back.skins.r1.value, 20, 'csv: skins value');
   eq(back.rounds.r1.pairings[0].teamA, ['parker'], 'csv: pairing names map to ids');
   eq(back.rounds.r2.pairings.length, 3, 'csv: fourball pairing count');
+  eq(back.rounds.r1.teeTimes.length, 3, 'csv: tee-time groups round-trip');
+  eq(back.rounds.r1.teeTimes[0].time, '12:00 PM', 'csv: tee-time time preserved');
+  eq(back.rounds.r1.teeTimes[0].players.length, 4, 'csv: tee-time players matched by name');
+}
+
+/* tee-time parsing (paste from the email) */
+{
+  const st2 = sampleTournament();
+  st2.rounds.r1.teeTimes = [];
+  // mimic what parseTeeTimes does: match names to ids for a pasted line
+  const nameToId = {}; Object.values(st2.players).forEach((p) => { nameToId[p.name.toLowerCase()] = p.id; });
+  const line = '12:09pm Bernie, Polo, Ty, Townsley';
+  const m = line.match(/^(\d{1,2}:\d{2})\s*([ap])\.?\s*m\.?\b\s*(.*)$/i);
+  eq(m[1] + ' ' + m[2].toUpperCase() + 'M', '12:09 PM', 'teetimes: parse "12:09pm" -> "12:09 PM"');
+  const ids = m[3].split(/[,;/]+/).map((s) => s.trim()).map((n) => nameToId[n.toLowerCase()]).filter(Boolean);
+  eq(ids.join(','), 'bernie,polo,ty,townsley', 'teetimes: names matched to player ids');
 }
 
 // CSV preserves the fields that used to reset to defaults
