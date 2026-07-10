@@ -159,6 +159,15 @@ fireClick({ action: 'tab', tab: 'home' });
 fireClick({ action: 'sheet', sheet: 'switch' }); check('switch-sheet');
 fireClick({ action: 'close-sheet' });
 
+// "viewing as" indicator + quick player-picker sheet (use a real player id)
+fireClick({ action: 'sheet', sheet: 'me' }); check('me-sheet');
+const somePid = Object.keys(Store.get().players)[0];
+fireClick({ action: 'set-me', id: somePid });
+if (appEl.innerHTML.includes('Viewing as')) console.log('ok viewing-as shown'); else { errors++; console.log('VIEWING-AS missing after set-me'); }
+if (Store.getMe() === somePid) console.log('ok setMe stored locally'); else { errors++; console.log('setMe not stored'); }
+fireClick({ action: 'sheet', sheet: 'me' }); fireClick({ action: 'clear-me' }); check('me-cleared');
+if (Store.getMe() == null) console.log('ok clear-me reset'); else { errors++; console.log('clear-me did not reset'); }
+
 // how-it-works sheet
 fireClick({ action: 'tab', tab: 'home' });
 fireClick({ action: 'sheet', sheet: 'how' }); check('sheet');

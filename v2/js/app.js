@@ -140,6 +140,14 @@ function heroActions() {
     <button class="icon-btn" data-action="theme" title="Theme">◐</button>
   </div>`;
 }
+/* small "who is this device" line under the header — tap to pick/change */
+function viewingAs() {
+  const me = meId() ? player(meId()) : null;
+  if (me) {
+    return `<div class="center viewas">Viewing as ${sdot(me.squadId)}<b>${esc(me.name)}</b> · <button class="linklike" data-action="sheet" data-sheet="me">Change</button></div>`;
+  }
+  return `<div class="center viewas"><button class="linklike" data-action="sheet" data-sheet="me">👤 Tap to pick your player</button></div>`;
+}
 function hero() {
   const st = S();
   const name = esc(st.tournament.name || 'Golf Trip');
@@ -159,6 +167,7 @@ function hero() {
       <div class="hero-top">${heroActions()}</div>
       <div class="cup"><div class="cup-mid"><div class="hero-name">${nameTap}</div><div class="target num">${sub}</div></div></div>
       <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
+      ${viewingAs()}
     </div>`;
   }
   const ids = squadIds();
@@ -177,6 +186,7 @@ function hero() {
     <div class="hero-top">${heroActions()}</div>
     ${two}${clinchBadge}
     <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
+    ${viewingAs()}
   </div>`;
 }
 
@@ -1257,8 +1267,26 @@ function switchSheet() {
   </div></div>`;
 }
 
+function mePickerSheet() {
+  const meNow = meId();
+  const groups = squadIds().map((sid) => {
+    const inSquad = Object.entries(S().players).filter(([, p]) => p.squadId === sid);
+    if (!inSquad.length) return '';
+    const opts = inSquad.map(([id, p]) => `<button class="me-opt ${id === meNow ? 'sel' : ''}" data-action="set-me" data-id="${id}">${sdot(p.squadId)}${esc(p.name)}${id === meNow ? ' <span class="me-check">✓</span>' : ''}</button>`).join('');
+    return `<div class="me-grp"><div class="me-grp-h">${sdot(sid)}${esc(squad(sid).name)}</div><div class="me-opts">${opts}</div></div>`;
+  }).join('');
+  return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
+    <h2>Who are you?</h2>
+    <p class="muted" style="font-size:13px">Saved on <b>this device only</b> — it sets your matchup, tee time and “My Card”. Picked the wrong one? Just tap another.</p>
+    <div style="margin:12px 0">${groups || '<div class="muted" style="font-size:13px">No players yet.</div>'}</div>
+    ${meNow ? '<button class="btn secondary small" data-action="clear-me">Clear selection</button> ' : ''}
+    <button class="btn" data-action="close-sheet">Done</button>
+  </div></div>`;
+}
+
 function sheet() {
   if (ui.sheet === 'switch') return switchSheet();
+  if (ui.sheet === 'me') return mePickerSheet();
   if (ui.sheet !== 'how') return '';
   const st = S();
   const stand = computeStandings(st);
@@ -1336,6 +1364,8 @@ app.addEventListener('click', (e) => {
     'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
     'switch-tourney': () => { ui.sheet = null; ui.view = 'home'; ui.scope = 'overall'; Store.switchTournament(t.dataset.id); },
     'setup-unlock': () => { const el = document.getElementById('setup-pin-entry'); if (tryUnlockSetup(el ? el.value : '')) render(); else alert('Wrong PIN.'); },
+    'set-me': () => { ui.sheet = null; Store.setMe(t.dataset.id || null); render(); },
+    'clear-me': () => { ui.sheet = null; Store.setMe(null); render(); },
     'setup-lock-now': () => { lockSetupNow(); render(); },
     'setup-clear-pin': () => { if (confirm('Remove the setup PIN? Anyone will be able to edit Setup.')) { Store.update((s) => { s.tournament.setupPin = ''; }); rememberUnlock(''); render(); } },
     'del-tourney': () => { const tn = (Store.listTournaments().find((x) => x.id === t.dataset.id) || {}).name || t.dataset.id; if (confirm('Delete tournament "' + tn + '"? This removes it for everyone and cannot be undone.')) Store.deleteTournament(t.dataset.id); },

@@ -58,6 +58,8 @@ body {
 .synctag { font-size: 10px; font-weight: 700; letter-spacing: .03em; padding: 1px 8px; border-radius: var(--r-pill); }
 .synctag.on { background: rgba(255,255,255,.18); color: #aef5c9; }
 .synctag.off { background: rgba(255,255,255,.12); color: rgba(255,255,255,.7); }
+.viewas { margin-top: 4px; color: #fff; font-size: 12px; opacity: .96; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
 
 /* ---------- bottom tab bar ---------- */
 .tabbar {
@@ -248,6 +250,12 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
 .sheet { background: var(--bg); width: 100%; max-width: var(--maxw); border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--s5) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(0,0,0,.25); }
 .sheet h2 { margin-top: 0; }
+.me-grp { margin-bottom: 12px; }
+.me-grp-h { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.me-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.me-opt { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: var(--r-pill); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.me-opt.sel { border-color: var(--green); background: rgba(27,122,61,.14); font-weight: 700; }
+.me-check { color: var(--green); font-weight: 800; }
 .sheet .rule { padding: 12px 0; border-bottom: 1px solid var(--hairline); }
 .sheet .rule b { display: block; }
 .sheet .rule .ex { color: var(--muted); font-size: 14px; margin-top: 2px; }
