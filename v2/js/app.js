@@ -32,17 +32,20 @@ function hasData() { return roundIds().length > 0 && squadIds().length > 0; }
 
 /* ---- Setup PIN lock (soft) ----
  * The PIN lives in the (synced) tournament so every device sees the same lock;
- * "unlocked" is remembered per-device in localStorage, keyed by tournament id,
- * and only counts while the stored value still matches the current PIN (so
- * changing/removing the PIN on any device re-locks the others). It's a
- * deterrent against accidental edits — the data is in an open DB, not secure. */
+ * "unlocked" is remembered per-device in localStorage, keyed by tournament id.
+ * Setting a PIN locks the current device immediately. A universal ADMIN_PIN
+ * always unlocks — a master key in case the tournament PIN gets changed and
+ * someone is locked out; unlocking with it survives later PIN changes. It's a
+ * deterrent against accidental edits — the data is in an open DB, not secure,
+ * and the admin code is readable in this source, so treat it as convenience. */
 const SETUP_UNLOCK_KEY = 'golftrip-v2-setupunlock';
+const ADMIN_PIN = '1322';
 function setupPin() { return (S().tournament && S().tournament.setupPin) || ''; }
 function unlockMap() { try { return JSON.parse(localStorage.getItem(SETUP_UNLOCK_KEY) || '{}') || {}; } catch (e) { return {}; } }
 function saveUnlockMap(m) { try { localStorage.setItem(SETUP_UNLOCK_KEY, JSON.stringify(m)); } catch (e) {} }
-function setupUnlocked() { const pin = setupPin(); return !pin || unlockMap()[Store.getActiveId()] === pin; }
-function rememberUnlock(pin) { const m = unlockMap(); if (pin) m[Store.getActiveId()] = pin; else delete m[Store.getActiveId()]; saveUnlockMap(m); }
-function tryUnlockSetup(entered) { const pin = setupPin(); if (pin && String(entered) === pin) { rememberUnlock(pin); return true; } return false; }
+function setupUnlocked() { const pin = setupPin(); if (!pin) return true; const u = unlockMap()[Store.getActiveId()]; return u === pin || u === ADMIN_PIN; }
+function rememberUnlock(val) { const m = unlockMap(); if (val) m[Store.getActiveId()] = val; else delete m[Store.getActiveId()]; saveUnlockMap(m); }
+function tryUnlockSetup(entered) { const pin = setupPin(); const e = String(entered); if (pin && (e === pin || e === ADMIN_PIN)) { rememberUnlock(e); return true; } return false; }
 function lockSetupNow() { const m = unlockMap(); delete m[Store.getActiveId()]; saveUnlockMap(m); }
 
 /* squad-colored dot */
@@ -919,7 +922,7 @@ function setupLockScreen() {
     <p class="muted">Enter the PIN to edit players, rounds, courses, and tournaments. Ask whoever set up the trip if you don't have it.</p>
     <input id="setup-pin-entry" class="pin-in" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" data-action="setup-pin-enter">
     <div><button class="btn" data-action="setup-unlock">Unlock</button></div>
-    <p class="muted" style="font-size:12px;margin-top:14px">Soft lock to prevent accidental edits — not real security. You don't need the PIN to switch tournaments (tap the name at the top) or to score.</p>
+    <p class="muted" style="font-size:12px;margin-top:14px">Locked out because the PIN was changed? The trip admin has a master code that always works. Soft lock to prevent accidental edits — not real security. You don't need the PIN to switch tournaments (tap the name at the top) or to score.</p>
   </div>`;
 }
 
@@ -928,11 +931,11 @@ function setupLockManageCard() {
   return `<div class="card">
     <h2>🔒 Setup lock</h2>
     <p class="muted" style="font-size:13px">${pin
-      ? 'A PIN is set — editing Setup on any device requires it. It doesn\'t affect scoring or switching tournaments. Soft lock only (the data lives in an open database).'
-      : 'Set a PIN so only people who know it can change the setup. Soft lock to prevent accidents — not real security.'}</p>
+      ? 'A PIN is set — editing Setup on any device requires it. Setting or changing it locks this device right away. It doesn\'t affect scoring or switching tournaments. Soft lock only (the data lives in an open database).'
+      : 'Set a PIN so only people who know it can change the setup. Setting it locks this device immediately (re-enter to keep editing). Soft lock to prevent accidents — not real security.'}</p>
     <div class="field"><label>${pin ? 'Change PIN (type a new one)' : 'Set a PIN'}</label>
       <input class="pin-in pin-in-left" type="text" inputmode="numeric" autocomplete="off" placeholder="${pin ? 'new PIN…' : 'e.g. 1234'}" data-action="setup-pin" value=""></div>
-    ${pin ? `<div class="btn-row"><button class="btn secondary small" data-action="setup-lock-now">Lock this device now</button><button class="btn danger small" data-action="setup-clear-pin">Remove PIN</button></div>` : ''}
+    ${pin ? `<div class="btn-row"><button class="btn secondary small" data-action="setup-lock-now">Lock this device now</button><button class="btn danger small" data-action="setup-clear-pin">Remove PIN — unlock everyone</button></div>` : ''}
   </div>`;
 }
 
@@ -1400,7 +1403,7 @@ app.addEventListener('change', (e) => {
     'toggle-import-new': () => { ui.importAsNew = !!e.target.checked; render(); },
     'csv-file': () => doCsvImport(e.target),
     'setup-pin-enter': () => { if (tryUnlockSetup(v)) render(); else if (v) alert('Wrong PIN.'); },
-    'setup-pin': () => { const np = String(v || '').trim(); Store.update((s) => { s.tournament.setupPin = np; }); rememberUnlock(np); render(); },
+    'setup-pin': () => { const np = String(v || '').trim(); Store.update((s) => { s.tournament.setupPin = np; }); if (np) lockSetupNow(); else rememberUnlock(''); render(); },
     'trip-name': () => Store.update((s) => { s.tournament.name = v; }),
     'set-normtarget': () => Store.update((s) => { s.tournament.normalizeTarget = Number(v) || 4; }),
     'squad-name': () => Store.update((s) => { s.squads[t.dataset.id].name = v; }),

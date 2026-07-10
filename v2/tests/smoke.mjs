@@ -142,21 +142,24 @@ fireChange({ action: 'round-tee', id: 'r1' }, 'legacy-white'); check('round-tee'
 fireChange({ action: 'round-tee-override', rid: 'r1', pid: 'p1' }, 'legacy-blue'); check('tee-override');
 fireClick({ action: 'del-player', id: 'p12' }); check('del-player');
 
-// setup PIN lock: set a pin, lock this device, verify locked, wrong pin fails, right pin unlocks, clear
+// setup PIN lock: setting a PIN locks THIS device immediately (no lock-now needed)
 fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'tournament' });
-fireChange({ action: 'setup-pin' }, '1234'); check('pin-set');
-fireClick({ action: 'setup-lock-now' });
+fireChange({ action: 'setup-pin' }, '1234');
 fireClick({ action: 'tab', tab: 'setup' });
-if (appEl.innerHTML.includes('Setup is locked')) console.log('ok setup locked'); else { errors++; console.log('LOCK not engaged'); }
+if (appEl.innerHTML.includes('Setup is locked')) console.log('ok setting PIN locks immediately'); else { errors++; console.log('LOCK not engaged on set'); }
 // locked also makes the skins/money editor on the round page read-only
 fireClick({ action: 'tab', tab: 'rounds' }); fireClick({ action: 'open-round', id: 'r2' });
 if (!appEl.innerHTML.includes('data-action="skin-enabled"') && appEl.innerHTML.includes('change in Setup')) console.log('ok skins/money read-only when locked'); else { errors++; console.log('SKINS editable while locked'); }
 fireClick({ action: 'tab', tab: 'setup' });
-if (appEl.innerHTML.includes('Setup is locked')) console.log('ok still locked at setup'); else { errors++; console.log('LOCK lost'); }
 fireChange({ action: 'setup-pin-enter' }, '9999');
 if (appEl.innerHTML.includes('Setup is locked')) console.log('ok wrong pin stays locked'); else { errors++; console.log('LOCK bypassed by wrong pin'); }
+// universal admin code unlocks even without the tournament PIN
+fireChange({ action: 'setup-pin-enter' }, '1322');
+if (!appEl.innerHTML.includes('Setup is locked')) console.log('ok admin master code unlocks'); else { errors++; console.log('ADMIN code failed'); }
+// re-lock, then the real PIN unlocks
+fireClick({ action: 'setup-lock-now' }); fireClick({ action: 'tab', tab: 'setup' });
 fireChange({ action: 'setup-pin-enter' }, '1234');
-if (!appEl.innerHTML.includes('Setup is locked')) console.log('ok unlocked with pin'); else { errors++; console.log('UNLOCK failed'); }
+if (!appEl.innerHTML.includes('Setup is locked')) console.log('ok real pin unlocks'); else { errors++; console.log('UNLOCK failed'); }
 fireClick({ action: 'setup-clear-pin' }); check('pin-cleared');
 
 // switch-tournament sheet (opened from the header name)
