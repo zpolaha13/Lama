@@ -116,7 +116,16 @@ export function replaceAll(next) {
 
 export function exportJSON() { return JSON.stringify(state, null, 2); }
 export function importJSON(json) { replaceAll(typeof json === 'string' ? JSON.parse(json) : json); }
-export function setMe(playerId) { update((s) => { s.ui = s.ui || {}; s.ui.meId = playerId; }); }
+
+/* "Which player am I" is per-DEVICE, not shared. It used to live in the synced
+ * state (s.ui.meId), so picking yourself on one phone changed it for everyone.
+ * Keep it in localStorage, keyed by tournament id, and never write it to
+ * Firebase — each device remembers its own player. */
+const ME_KEY = 'golftrip-v2-me';
+let meMap = (() => { try { return JSON.parse(localStorage.getItem(ME_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+function saveMeMap() { try { localStorage.setItem(ME_KEY, JSON.stringify(meMap)); } catch (e) {} }
+export function getMe() { return meMap[activeId] || null; }
+export function setMe(playerId) { if (playerId) meMap[activeId] = playerId; else delete meMap[activeId]; saveMeMap(); notify(); }
 
 /* ---- tournaments registry ---- */
 function nowStamp() { try { return Date.now(); } catch (e) { return 0; } }

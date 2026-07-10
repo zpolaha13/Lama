@@ -27,7 +27,7 @@ const squadIds = () => Object.keys(S().squads);
 const fmtInfo = (f) => FORMAT_INFO[f] || { label: f, short: '', explainer: '' };
 function fmtToPar(n) { return n === 0 ? 'E' : n > 0 ? '+' + n : String(n); }
 function toParClass(n) { return n < 0 ? 'under' : n === 0 ? 'even' : 'over'; }
-function meId() { return S().ui && S().ui.meId; }
+function meId() { const m = Store.getMe(); return m && S().players[m] ? m : null; }
 function hasData() { return roundIds().length > 0 && squadIds().length > 0; }
 
 /* ---- Setup PIN lock (soft) ----

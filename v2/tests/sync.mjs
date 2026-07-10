@@ -85,5 +85,18 @@ ok(Store.listTournaments().some((t) => t.id === newId), 'created trip appears in
 // the create did not resurrect t1
 ok(db.raw('trips/t1') == null, 'creating a new trip did not resurrect the deleted one');
 
+// "which player am I" is device-local: it must NOT write to the shared DB
+Store.setMe('zoe');
+ok(Store.getMe() === 'zoe', 'setMe is remembered locally for this device');
+const meNode = db.raw('trips/' + newId);
+ok(!meNode.ui || meNode.ui.meId == null, 'setMe does NOT sync to the shared DB (per-device only)');
+// and it is per-tournament on this device
+const otherId = Store.createTournament({ name: 'Second Cup', mode: 'blank' });
+ok(Store.getMe() === null, 'a different tournament starts with no "me" on this device');
+Store.setMe('amy');
+ok(Store.getMe() === 'amy', 'second tournament remembers its own me');
+Store.switchTournament(newId);
+ok(Store.getMe() === 'zoe', 'switching back restores the first tournament’s me');
+
 console.log(`\nSYNC ${fail ? 'FAILED' : 'OK'}  PASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);
