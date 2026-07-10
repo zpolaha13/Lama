@@ -1,0 +1,17 @@
+{
+  "name": "Lama Palooza 2026",
+  "short_name": "Lama",
+  "description": "Live golf scoring — Red vs Blue. Scores, skins, payouts & standings.",
+  "start_url": "./?trip=lama-palooza-2026-8y7o",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#1B7A3D",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
