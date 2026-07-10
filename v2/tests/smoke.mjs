@@ -148,6 +148,11 @@ fireChange({ action: 'setup-pin' }, '1234'); check('pin-set');
 fireClick({ action: 'setup-lock-now' });
 fireClick({ action: 'tab', tab: 'setup' });
 if (appEl.innerHTML.includes('Setup is locked')) console.log('ok setup locked'); else { errors++; console.log('LOCK not engaged'); }
+// locked also makes the skins/money editor on the round page read-only
+fireClick({ action: 'tab', tab: 'rounds' }); fireClick({ action: 'open-round', id: 'r2' });
+if (!appEl.innerHTML.includes('data-action="skin-enabled"') && appEl.innerHTML.includes('change in Setup')) console.log('ok skins/money read-only when locked'); else { errors++; console.log('SKINS editable while locked'); }
+fireClick({ action: 'tab', tab: 'setup' });
+if (appEl.innerHTML.includes('Setup is locked')) console.log('ok still locked at setup'); else { errors++; console.log('LOCK lost'); }
 fireChange({ action: 'setup-pin-enter' }, '9999');
 if (appEl.innerHTML.includes('Setup is locked')) console.log('ok wrong pin stays locked'); else { errors++; console.log('LOCK bypassed by wrong pin'); }
 fireChange({ action: 'setup-pin-enter' }, '1234');

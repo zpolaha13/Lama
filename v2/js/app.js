@@ -514,7 +514,12 @@ function skinsCard(r) {
         <table style="margin-top:6px"><thead><tr><th class="c">Hole</th><th>Winner</th><th class="c">Skins</th></tr></thead><tbody>${holeRows}</tbody></table>
       </details>`;
   }
-  return `<div class="card"><h2>Skins &amp; money</h2>${cfgRow}${body}</div>`;
+  // when Setup is PIN-locked, the money settings are read-only too — show a
+  // summary instead of the editable controls, but keep the winnings/results
+  const cfgSection = setupUnlocked() ? cfgRow : `<div class="tip">${cfg.enabled
+    ? 'Skins <b>On</b> · ' + (cfg.mode === 'gross' ? 'Gross' : 'Net ' + cfg.allow + '%') + ' · $' + cfg.value + ' buy-in · ' + (cfg.tie === 'split' ? 'split ties' : 'rollover')
+    : 'Skins <b>Off</b> for this round.'} <span class="muted">· 🔒 change in Setup</span></div>`;
+  return `<div class="card"><h2>Skins &amp; money</h2>${cfgSection}${body}</div>`;
 }
 
 /* trip-wide skins money per player (across all non-scramble rounds) */
