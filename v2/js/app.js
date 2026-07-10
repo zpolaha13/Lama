@@ -30,6 +30,21 @@ function toParClass(n) { return n < 0 ? 'under' : n === 0 ? 'even' : 'over'; }
 function meId() { return S().ui && S().ui.meId; }
 function hasData() { return roundIds().length > 0 && squadIds().length > 0; }
 
+/* ---- Setup PIN lock (soft) ----
+ * The PIN lives in the (synced) tournament so every device sees the same lock;
+ * "unlocked" is remembered per-device in localStorage, keyed by tournament id,
+ * and only counts while the stored value still matches the current PIN (so
+ * changing/removing the PIN on any device re-locks the others). It's a
+ * deterrent against accidental edits — the data is in an open DB, not secure. */
+const SETUP_UNLOCK_KEY = 'golftrip-v2-setupunlock';
+function setupPin() { return (S().tournament && S().tournament.setupPin) || ''; }
+function unlockMap() { try { return JSON.parse(localStorage.getItem(SETUP_UNLOCK_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function saveUnlockMap(m) { try { localStorage.setItem(SETUP_UNLOCK_KEY, JSON.stringify(m)); } catch (e) {} }
+function setupUnlocked() { const pin = setupPin(); return !pin || unlockMap()[Store.getActiveId()] === pin; }
+function rememberUnlock(pin) { const m = unlockMap(); if (pin) m[Store.getActiveId()] = pin; else delete m[Store.getActiveId()]; saveUnlockMap(m); }
+function tryUnlockSetup(entered) { const pin = setupPin(); if (pin && String(entered) === pin) { rememberUnlock(pin); return true; } return false; }
+function lockSetupNow() { const m = unlockMap(); delete m[Store.getActiveId()]; saveUnlockMap(m); }
+
 /* squad-colored dot */
 const sdot = (sid) => { const s = squad(sid); return s ? `<span class="dot" style="background:${s.color || '#888'}"></span>` : ''; };
 const cPar = (c) => (c && c.holes ? c.holes.reduce((s, h) => s + (Number(h.par) || 0), 0) : 0);
@@ -128,8 +143,13 @@ function heroActions() {
 function hero() {
   const st = S();
   const name = esc(st.tournament.name || 'Golf Trip');
+  // tapping the tournament name opens the switcher (always available — switching
+  // isn't behind the Setup PIN); a caret hints it's tappable
+  const nameTap = hasData()
+    ? `<button class="name-tap" data-action="sheet" data-sheet="switch" title="Switch tournament">${name} <span class="name-caret">▾</span></button>`
+    : name;
   if (!hasData()) {
-    return `<div class="hero"><div class="hero-top"><span class="hero-title">${name}</span>${heroActions()}</div></div>`;
+    return `<div class="hero"><div class="hero-top"><span class="hero-title">${nameTap}</span>${heroActions()}</div></div>`;
   }
   const stand = computeStandings(st);
   if (stand.strokePlay && stand.teamLeaderboard) {
@@ -137,7 +157,7 @@ function hero() {
     const sub = lead ? `${esc(lead.name)} leads · ${fmtToPar(lead.toPar)}` : 'No scores yet';
     return `<div class="hero ${heroCompact ? 'hero-compact' : ''}">
       <div class="hero-top">${heroActions()}</div>
-      <div class="cup"><div class="cup-mid"><div class="hero-name">${name}</div><div class="target num">${sub}</div></div></div>
+      <div class="cup"><div class="cup-mid"><div class="hero-name">${nameTap}</div><div class="target num">${sub}</div></div></div>
       <div class="center" style="margin-top:6px"><span class="synctag ${Store.isOnline() ? 'on' : 'off'}">${Store.isOnline() ? '● Live · everyone synced' : '○ Local only'}</span></div>
     </div>`;
   }
@@ -145,7 +165,7 @@ function hero() {
   const a = ids[0], b = ids[1];
   const sa = squad(a), sb = squad(b);
   const clinchBadge = stand.clinched ? `<div class="center"><span class="clinch">🏆 ${esc(squad(stand.clinched).name)} clinched</span></div>` : '';
-  const center = `<div class="cup-mid"><div class="hero-name">${name}</div><div class="target num">first to ${stand.target}</div></div>`;
+  const center = `<div class="cup-mid"><div class="hero-name">${nameTap}</div><div class="target num">first to ${stand.target}</div></div>`;
   const two = b
     ? `<div class="cup">
         <div class="cup-side"><div class="pts num">${stand.cup[a] ?? 0}</div><div class="nm">${sdot(a)}${esc(sa.name)}</div></div>
@@ -877,7 +897,32 @@ const SETUP_TABS = [
   ['courses', 'Courses'],
   ['data', 'Sync'],
 ];
+function setupLockScreen() {
+  return `<div class="card lockcard">
+    <div class="lock-ico">🔒</div>
+    <h2>Setup is locked</h2>
+    <p class="muted">Enter the PIN to edit players, rounds, courses, and tournaments. Ask whoever set up the trip if you don't have it.</p>
+    <input id="setup-pin-entry" class="pin-in" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" data-action="setup-pin-enter">
+    <div><button class="btn" data-action="setup-unlock">Unlock</button></div>
+    <p class="muted" style="font-size:12px;margin-top:14px">Soft lock to prevent accidental edits — not real security. You don't need the PIN to switch tournaments (tap the name at the top) or to score.</p>
+  </div>`;
+}
+
+function setupLockManageCard() {
+  const pin = setupPin();
+  return `<div class="card">
+    <h2>🔒 Setup lock</h2>
+    <p class="muted" style="font-size:13px">${pin
+      ? 'A PIN is set — editing Setup on any device requires it. It doesn\'t affect scoring or switching tournaments. Soft lock only (the data lives in an open database).'
+      : 'Set a PIN so only people who know it can change the setup. Soft lock to prevent accidents — not real security.'}</p>
+    <div class="field"><label>${pin ? 'Change PIN (type a new one)' : 'Set a PIN'}</label>
+      <input class="pin-in pin-in-left" type="text" inputmode="numeric" autocomplete="off" placeholder="${pin ? 'new PIN…' : 'e.g. 1234'}" data-action="setup-pin" value=""></div>
+    ${pin ? `<div class="btn-row"><button class="btn secondary small" data-action="setup-lock-now">Lock this device now</button><button class="btn danger small" data-action="setup-clear-pin">Remove PIN</button></div>` : ''}
+  </div>`;
+}
+
 function viewSetup() {
+  if (!setupUnlocked()) return setupLockScreen();
   if (!ui.setupTab || !SETUP_TABS.some((t) => t[0] === ui.setupTab)) ui.setupTab = 'tournament';
   const seg = `<div class="seg">${SETUP_TABS.map(([id, label]) => `<button data-action="setup-tab" data-tab="${id}" class="${ui.setupTab === id ? 'active' : ''}">${label}</button>`).join('')}</div>`;
   let body = '';
@@ -895,7 +940,7 @@ function setupTournament() {
   const st = S();
   const stand = computeStandings(st);
   const normalized = st.tournament.weightMode === 'normalized';
-  return tournamentsCard() + `<div class="card"><h2>Tournament</h2>
+  return setupLockManageCard() + tournamentsCard() + `<div class="card"><h2>Tournament</h2>
     <div class="field"><label>Name</label><input data-action="trip-name" value="${esc(st.tournament.name)}"></div>
     <div class="${normalized ? 'grid2' : ''}">
       <div class="field"><label>Round weighting</label><select data-action="set-weight"><option value="true" ${!normalized ? 'selected' : ''}>True points</option><option value="normalized" ${normalized ? 'selected' : ''}>Equal-weight rounds</option></select></div>
@@ -1195,7 +1240,25 @@ function printTeamCard(r, c, sid, idx) {
 }
 
 /* ---------------- "How it works" sheet ---------------- */
+function switchSheet() {
+  const list = Store.listTournaments();
+  const active = Store.getActiveId();
+  const rows = list.map((t) => `<div class="list-row" ${t.id === active ? 'style="border-color:var(--green)"' : ''}>
+      <div style="flex:1;min-width:0"><b>${esc(t.name || t.id)}</b>${t.id === active ? ' <span class="muted">· scoring now</span>' : ''}
+        <div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis">${esc(t.id)}</div></div>
+      ${t.id === active ? '' : `<button class="btn small secondary" data-action="switch-tourney" data-id="${t.id}">Open</button>`}
+    </div>`).join('');
+  return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
+    <h2>Switch tournament</h2>
+    <p class="muted" style="font-size:13px">Pick which tournament you're viewing and scoring.${Store.isOnline() ? '' : ' <i>Local only — these are the ones saved on this device.</i>'}</p>
+    <div style="margin:12px 0">${rows || '<div class="muted" style="font-size:13px">No tournaments yet.</div>'}</div>
+    <p class="muted" style="font-size:12px">To create, import, or delete tournaments, open <b>Setup</b> (needs the PIN if one is set).</p>
+    <button class="btn" data-action="close-sheet">Done</button>
+  </div></div>`;
+}
+
 function sheet() {
+  if (ui.sheet === 'switch') return switchSheet();
   if (ui.sheet !== 'how') return '';
   const st = S();
   const stand = computeStandings(st);
@@ -1271,7 +1334,10 @@ app.addEventListener('click', (e) => {
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
     'add-player': () => Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: 'New Player', index: 0, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '', ghin: '' }; }),
     'del-player': () => Store.update((s) => { const del = t.dataset.id; delete s.players[del]; Object.values(s.rounds).forEach((r) => (r.pairings || []).forEach((p) => { p.teamA = (p.teamA || []).filter((x) => x !== del); p.teamB = (p.teamB || []).filter((x) => x !== del); })); if (s.ui && s.ui.meId === del) s.ui.meId = null; }),
-    'switch-tourney': () => { ui.view = 'home'; ui.scope = 'overall'; Store.switchTournament(t.dataset.id); },
+    'switch-tourney': () => { ui.sheet = null; ui.view = 'home'; ui.scope = 'overall'; Store.switchTournament(t.dataset.id); },
+    'setup-unlock': () => { const el = document.getElementById('setup-pin-entry'); if (tryUnlockSetup(el ? el.value : '')) render(); else alert('Wrong PIN.'); },
+    'setup-lock-now': () => { lockSetupNow(); render(); },
+    'setup-clear-pin': () => { if (confirm('Remove the setup PIN? Anyone will be able to edit Setup.')) { Store.update((s) => { s.tournament.setupPin = ''; }); rememberUnlock(''); render(); } },
     'del-tourney': () => { const tn = (Store.listTournaments().find((x) => x.id === t.dataset.id) || {}).name || t.dataset.id; if (confirm('Delete tournament "' + tn + '"? This removes it for everyone and cannot be undone.')) Store.deleteTournament(t.dataset.id); },
     'new-tourney-copy': () => { const n = prompt('Name the new tournament:', 'Golf Trip'); if (n) { ui.view = 'setup'; Store.createTournament({ name: n, mode: 'copy' }); } },
     'new-tourney-blank': () => { const n = prompt('Name the new tournament:'); if (n) { ui.view = 'setup'; Store.createTournament({ name: n, mode: 'blank' }); } },
@@ -1298,6 +1364,8 @@ app.addEventListener('change', (e) => {
     'pick-me': () => Store.setMe(v || null),
     'toggle-import-new': () => { ui.importAsNew = !!e.target.checked; render(); },
     'csv-file': () => doCsvImport(e.target),
+    'setup-pin-enter': () => { if (tryUnlockSetup(v)) render(); else if (v) alert('Wrong PIN.'); },
+    'setup-pin': () => { const np = String(v || '').trim(); Store.update((s) => { s.tournament.setupPin = np; }); rememberUnlock(np); render(); },
     'trip-name': () => Store.update((s) => { s.tournament.name = v; }),
     'set-normtarget': () => Store.update((s) => { s.tournament.normalizeTarget = Number(v) || 4; }),
     'squad-name': () => Store.update((s) => { s.squads[t.dataset.id].name = v; }),
