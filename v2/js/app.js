@@ -194,6 +194,11 @@ function viewHome() {
   let action = actionCard(stand);
   // mini live board: current live round matches
   const liveRound = stand.rounds.find((r) => r.status === 'live') || stand.rounds.find((r) => r.status !== 'final');
+  // Tee sheet for the current/next round, shown on home for everyone — even
+  // before you pick your player — so the whole group can find their time the
+  // moment they open the app. (Picking your player highlights your group.)
+  let teeSheet = '';
+  if (liveRound) { const fr = round(liveRound.roundId); teeSheet = teeTimesCard(fr, fr.name + ' · Tee times'); }
   let mini = '';
   if (liveRound) {
     const r = round(liveRound.roundId);
@@ -204,7 +209,7 @@ function viewHome() {
       <button class="btn secondary small" data-action="open-round" data-id="${r.id}" style="margin-top:10px">Open round →</button>
     </div>`;
   }
-  return action + mini + breakdownCard(stand, false);
+  return action + teeSheet + mini + breakdownCard(stand, false);
 }
 
 function actionCard(stand) {
@@ -307,11 +312,17 @@ function viewRounds() {
   const cards = roundIds().map((id, i) => {
     const r = round(id); const rr = stand.rounds.find((x) => x.roundId === id);
     const c = course(r.courseId);
+    const times = (r.teeTimes || []).map((g) => g.time).filter(Boolean);
+    const mine = myTeeTime(r);
+    const teeHint = times.length
+      ? `<div class="tt-hint">⛳ ${mine ? 'Your tee time: <b>' + esc(mine.time) + '</b>' : esc(times.join(' · '))}</div>`
+      : '';
     return `<button class="round-card" data-action="open-round" data-id="${id}">
       <div class="head"><div><div class="rn">${esc(r.name)}</div><div class="meta">${c ? esc(c.name) : 'No course'} · ${fmtInfo(r.format).label}</div></div>
         <span class="status ${rr.status}">${rr.status === 'live' ? '<span class="live-pulse"></span>Live' : rr.status}</span></div>
       <div class="expl">${esc(fmtInfo(r.format).explainer)}</div>
       <div class="ptsavail">${rr.teamScramble ? 'Low team net wins' : rr.pointsAvailable + ' points in play'}</div>
+      ${teeHint}
     </button>`;
   }).join('');
   return `<h2 style="margin:0 0 12px">Schedule</h2>${cards}`;
@@ -348,7 +359,7 @@ function teeTimeFor(r, ids) {
   (r.teeTimes || []).forEach((g) => { const n = (g.players || []).filter((p) => set.has(p)).length; if (n > bestN) { bestN = n; best = g.time || ''; } });
   return bestN > 0 ? best : '';
 }
-function teeTimesCard(r) {
+function teeTimesCard(r, title) {
   const tt = r.teeTimes || [];
   if (!tt.length) return '';
   const me = meId();
@@ -357,7 +368,7 @@ function teeTimesCard(r) {
     const names = (g.players || []).map((id) => { const p = player(id); return p ? `<span class="tt-p">${sdot(p.squadId)}${esc(p.name)}</span>` : '?'; }).join('');
     return `<div class="tt-row ${mine ? 'mine' : ''}"><div class="tt-time num">${esc(g.time || 'TBD')}</div><div class="tt-names">${names}${mine ? '<span class="tt-you">You</span>' : ''}</div></div>`;
   }).join('');
-  return `<div class="card"><h2>Tee times</h2>${rows}</div>`;
+  return `<div class="card"><h2>${esc(title || 'Tee times')}</h2>${rows}</div>`;
 }
 
 function viewRoundDetail() {
