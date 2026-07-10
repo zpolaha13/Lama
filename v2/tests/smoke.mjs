@@ -93,6 +93,8 @@ check('players-sorted');
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');
 // print scorecards for all rounds (exercises card builder across all 3 formats)
 try { fireClick({ action: 'print-cards' }); console.log('ok print-cards built'); } catch (e) { errors++; console.log('PRINT ERR', e.message); }
+// print tournament summary (players/handicaps, rounds, matchups, rules + skins)
+try { fireClick({ action: 'print-summary' }); console.log('ok print-summary built'); } catch (e) { errors++; console.log('SUMMARY ERR', e.message); }
 // multi-tournament: create a copy, then a blank, then switch back
 fireClick({ action: 'new-tourney-copy' }); check('new-tourney-copy');
 const tourneys = Store.listTournaments();

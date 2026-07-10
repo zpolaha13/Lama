@@ -297,4 +297,21 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
   .cdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
   .pc-foot { font-size: 8px; color: #666; margin-top: 3px; }
   .pc-calc { font-size: 8.5px; color: #222; margin: 0 0 4px; padding: 3px 6px; background: #f3f3f3; border-radius: 4px; }
+
+  /* tournament summary — portrait (named page; falls back to the landscape @page above if unsupported) */
+  @page summ { size: portrait; margin: 0.5in; }
+  .summary-doc { page: summ; color: #000; font-size: 11px; line-height: 1.4; }
+  .summary-doc .sum-h1 { font-size: 20px; font-weight: 800; }
+  .summary-doc .sum-sub { color: #555; font-size: 11px; margin: 2px 0 12px; }
+  .summary-doc .sum-sec { margin-bottom: 12px; break-inside: avoid; }
+  .summary-doc .sum-h2 { font-size: 13px; font-weight: 800; border-bottom: 1.5px solid #111; padding-bottom: 2px; margin-bottom: 4px; }
+  .summary-doc .sum-meta { font-size: 10.5px; color: #333; margin-bottom: 3px; }
+  .summary-doc .sum-rules { font-size: 10.5px; margin-bottom: 5px; }
+  .summary-doc .sum-note { font-size: 9.5px; color: #666; margin-top: 3px; }
+  .summary-doc .sum-foot { font-size: 9px; color: #888; margin-top: 12px; border-top: 1px solid #ccc; padding-top: 4px; }
+  .summary-doc table.sum-tbl { width: 100%; border-collapse: collapse; margin-top: 2px; }
+  .summary-doc table.sum-tbl th, .summary-doc table.sum-tbl td { border: 1px solid #999; font-size: 10px; padding: 2px 5px; text-align: center; }
+  .summary-doc table.sum-tbl th { background: #ececec; }
+  .summary-doc table.sum-tbl td.l, .summary-doc table.sum-tbl th.l { text-align: left; }
+  .summary-doc table.sum-tbl td.c { color: #777; }
 }

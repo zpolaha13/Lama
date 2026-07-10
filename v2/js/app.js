@@ -1090,6 +1090,10 @@ function setupData() {
       ? '<div class="muted" style="font-size:12px;margin-top:8px">Everyone who opens the shared link scores into the same live leaderboard. One scorer per group is smoothest.</div>'
       : '<div class="tip" style="margin-top:10px">To let everyone score on their own phone, add your free Firebase project to <b>js/config.js</b>, then re-deploy.</div>'}
   </div>`;
+  html += `<div class="card"><h2>Tournament summary</h2>
+    <button class="btn" data-action="print-summary">🖨 Print / save summary (PDF)</button>
+    <div class="muted" style="font-size:12px;margin-top:8px">A printable overview — players &amp; handicaps (course handicap per round), the schedule, every matchup, and each round's rules &amp; skins. Opens your browser's print dialog; choose <b>Save as PDF</b> to share it.</div>
+  </div>`;
   html += `<div class="card"><h2>Scorecards</h2>
     <button class="btn" data-action="print-cards">🖨 Print / save scorecards (all rounds)</button>
     <div class="muted" style="font-size:12px;margin-top:8px">Opens your browser's print dialog — choose <b>Save as PDF</b> (set layout to <b>Landscape</b>). 2 cards per page with each player's tee, course handicap &amp; stroke dots; cut between them.</div>
@@ -1132,6 +1136,79 @@ function printScorecards(rids) {
   // name the PDF/print job after the tournament
   const prevTitle = document.title;
   document.title = (S().tournament.name || 'Scorecards').replace(/[\\/:*?"<>|]/g, '');
+  const restore = () => { document.title = prevTitle; };
+  try { window.addEventListener('afterprint', restore, { once: true }); } catch (e) {}
+  setTimeout(restore, 4000);
+  try { window.print(); } catch (e) {}
+}
+
+/* ---------------- printable tournament summary (export to PDF) ---------------- */
+function summaryScoring(r) {
+  const sr = r.scoringRule || {};
+  if (sr.pointSystem === 'holes') {
+    return `${sr.holePoints != null ? sr.holePoints : 0.5} pt/hole + ${sr.matchPoints != null ? sr.matchPoints : 1} pt match bonus`;
+  }
+  const t = S().tournament;
+  return `Match play — win ${t.winPoints}, tie ${t.tiePoints}${sr.pointsPerMatch && sr.pointsPerMatch !== 1 ? ' · ×' + sr.pointsPerMatch + ' per match' : ''}`;
+}
+
+function printSummary() {
+  const st = S();
+  const stand = computeStandings(st);
+  const rounds = roundIds().map(round).filter(Boolean);
+  const sqs = squadIds();
+  if (!Object.keys(st.players).length) { alert('Add some players first.'); return; }
+  // players sorted by team then name
+  const players = Object.values(st.players).sort((a, b) => {
+    const d = sqs.indexOf(a.squadId) - sqs.indexOf(b.squadId);
+    return d !== 0 ? d : (a.name || '').localeCompare(b.name || '');
+  });
+  const chCell = (p, r) => { try { return chFor(st, p, r); } catch (e) { return '—'; } };
+  const phead = `<tr><th class="l">Player</th><th>Team</th><th>GHIN</th><th>Index</th>${rounds.map((r, i) => `<th>R${i + 1} CH</th>`).join('')}</tr>`;
+  const prows = players.map((p) => `<tr><td class="l">${esc(p.name)}</td><td>${esc(squad(p.squadId) ? squad(p.squadId).name : '')}</td><td>${esc(p.ghin || '—')}</td><td>${esc(String(p.index))}</td>${rounds.map((r) => `<td>${chCell(p, r)}</td>`).join('')}</tr>`).join('');
+
+  const roundSecs = rounds.map((r, i) => {
+    const c = course(r.courseId);
+    const cfg = skinsCfg(r.id);
+    let pts = '';
+    try { const rr = resolveRound(st, r); pts = rr.teamScramble ? 'Low net wins' : rr.pointsAvailable + ' pts in play'; } catch (e) {}
+    const skins = cfg.enabled
+      ? `On · $${cfg.value} buy-in · ${cfg.mode === 'gross' ? 'Gross' : 'Net ' + cfg.allow + '%'} · ${cfg.tie === 'split' ? 'split ties' : 'rollover'}`
+      : 'Off';
+    let matchHtml;
+    if (r.format === 'teamscramble') {
+      const rows = sqs.map((sid) => { const mem = Object.values(st.players).filter((pp) => pp.squadId === sid).map((pp) => esc(pp.name)).join(', '); return `<tr><td class="l"><b>${esc(squad(sid) ? squad(sid).name : sid)}</b></td><td class="l">${mem || '—'}</td></tr>`; }).join('');
+      matchHtml = `<table class="sum-tbl"><tbody>${rows}</tbody></table>`;
+    } else {
+      const nm = (ids) => (ids || []).map((x) => esc(player(x) ? player(x).name : '?')).join(' / ');
+      const rows = (r.pairings || []).map((pr, mi) => `<tr><td>${mi + 1}</td><td class="l">${nm(pr.teamA)}</td><td class="c">vs</td><td class="l">${nm(pr.teamB)}</td></tr>`).join('');
+      matchHtml = rows ? `<table class="sum-tbl"><thead><tr><th>#</th><th class="l">Side A</th><th></th><th class="l">Side B</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="sum-note">No matchups set.</div>';
+    }
+    return `<div class="sum-sec">
+      <div class="sum-h2">R${i + 1} — ${esc(r.name.replace(/^Round \d+ — /, ''))}</div>
+      <div class="sum-meta">${c ? esc(c.name) : 'No course'} · ${esc(fmtInfo(r.format).label)}${r.date ? ' · ' + esc(r.date) : ''} · ${pts}</div>
+      <div class="sum-rules"><b>Handicap:</b> ${esc(hcpLabel(r))}. &nbsp;&nbsp;<b>Scoring:</b> ${esc(summaryScoring(r))}. &nbsp;&nbsp;<b>Skins &amp; money:</b> ${esc(skins)}.</div>
+      ${matchHtml}
+    </div>`;
+  }).join('');
+
+  const doc = `<div class="summary-doc">
+    <div class="sum-h1">${esc(st.tournament.name || 'Tournament')}</div>
+    <div class="sum-sub">${players.length} players · ${sqs.map((s) => esc(squad(s).name)).join(' vs ')} · first to ${stand.target} of ${stand.totalAvailable} pts · ${st.tournament.weightMode === 'normalized' ? 'equal-weight rounds' : 'true points'}</div>
+    <div class="sum-sec">
+      <div class="sum-h2">Players &amp; Handicaps</div>
+      <table class="sum-tbl"><thead>${phead}</thead><tbody>${prows}</tbody></table>
+      <div class="sum-note">CH = course handicap at each round's tee (before that round's allowance %).</div>
+    </div>
+    ${roundSecs}
+    <div class="sum-foot">Lama Palooza — tournament summary.</div>
+  </div>`;
+
+  let root = document.getElementById('scorecard-print');
+  if (!root) { root = document.createElement('div'); root.id = 'scorecard-print'; document.body.appendChild(root); }
+  root.innerHTML = doc;
+  const prevTitle = document.title;
+  document.title = ((st.tournament.name || 'Tournament') + ' — Summary').replace(/[\\/:*?"<>|]/g, '');
   const restore = () => { document.title = prevTitle; };
   try { window.addEventListener('afterprint', restore, { once: true }); } catch (e) {}
   setTimeout(restore, 4000);
@@ -1355,6 +1432,7 @@ app.addEventListener('click', (e) => {
     boost: () => toggleBoost(),
     share: () => shareLink(),
     'print-cards': () => printScorecards(t.dataset.rid ? [t.dataset.rid] : null),
+    'print-summary': () => printSummary(),
     export: () => doExport(),
     'import-json': () => doImportJSON(),
     'ghin-refresh': () => ghinRefresh(t.dataset.id),
