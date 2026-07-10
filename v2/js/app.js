@@ -341,6 +341,13 @@ function myTeeTime(r) {
   if (!me) return null;
   return (r.teeTimes || []).find((g) => (g.players || []).includes(me)) || null;
 }
+// the tee time of the group containing the most of these players (for a card)
+function teeTimeFor(r, ids) {
+  const set = new Set(ids || []);
+  let best = '', bestN = 0;
+  (r.teeTimes || []).forEach((g) => { const n = (g.players || []).filter((p) => set.has(p)).length; if (n > bestN) { bestN = n; best = g.time || ''; } });
+  return bestN > 0 ? best : '';
+}
 function teeTimesCard(r) {
   const tt = r.teeTimes || [];
   if (!tt.length) return '';
@@ -1118,7 +1125,7 @@ function printCard(r, c, pairing, idx) {
     ? 'Write each side\'s counting net per hole, then ✓ the winning team.'
     : 'Mark ✓ for whoever wins each hole.';
   return `<div class="print-card">
-    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}</div></div>
+    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${matchName}${(() => { const tm = teeTimeFor(r, [...(pairing.teamA || []), ...(pairing.teamB || [])]); return tm ? `<div class="pc-time">⛳ ${esc(tm)}</div>` : ''; })()}</div></div>
     ${table}
     <div class="pc-foot">• = handicap stroke received. ${wonNote} Scorer ____________  Att. ____________</div>
   </div>`;
@@ -1168,7 +1175,7 @@ function printTeamCard(r, c, sid, idx) {
   }).join('')}</tr>`;
   const table = `<table class="pcard">${hdr}${parR}${siR}${scoreRow}</table>`;
   return `<div class="print-card">
-    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · <b>CH ${ch}</b></div></div>
+    <div class="pc-head"><div><div class="pc-title">${esc(st.tournament.name)} — ${esc(r.name)}</div><div class="pc-sub">${meta}</div></div><div class="pc-match">${esc(sq ? sq.name : sid)} · <b>CH ${ch}</b>${(() => { const tm = teeTimeFor(r, members.map((p) => p.id)); return tm ? `<div class="pc-time">⛳ ${esc(tm)}</div>` : ''; })()}</div></div>
     <div class="pc-sub" style="margin:2px 0 2px">${memNames}</div>
     <div class="pc-calc"><b>Team handicap:</b> ${calc}</div>
     ${table}
