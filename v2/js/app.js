@@ -232,6 +232,14 @@ function viewHome() {
   // moment they open the app. (Picking your player highlights your group.)
   let teeSheet = '';
   if (liveRound) { const fr = round(liveRound.roundId); teeSheet = teeTimesCard(fr, fr.name + ' · Tee times'); }
+  // Stroke-play (team scramble) tournament: there are no points/cup, so just
+  // show the score — the team leaderboard — instead of the points breakdown.
+  if (stand.strokePlay && stand.teamLeaderboard) {
+    const totalHoles = stand.rounds.reduce((s, r) => s + (r.teamScramble ? r.teamScramble.holes : 0), 0);
+    const myTeam = meId() && player(meId()) ? player(meId()).squadId : null;
+    const openBtn = liveRound ? `<button class="btn secondary small" data-action="open-round" data-id="${liveRound.roundId}">Open round →</button>` : '';
+    return action + teeSheet + teamLeaderboardCard(stand.teamLeaderboard, totalHoles, 'Live standings', myTeam) + openBtn;
+  }
   let mini = '';
   if (liveRound) {
     const r = round(liveRound.roundId);
@@ -255,6 +263,14 @@ function actionCard(stand) {
     const target = liveR || nextR || stand.rounds[stand.rounds.length - 1];
     if (target) {
       const r = round(target.roundId);
+      if (r.format === 'teamscramble') {
+        // low-net team scramble: no head-to-head opponent — show your team roster
+        const sq = squad(me.squadId);
+        const mates = Object.values(S().players).filter((p) => p.squadId === me.squadId && p.id !== me.id).map((p) => esc(p.name));
+        lbl = target.status === 'live' ? 'Live now' : 'Up next';
+        msg = `${esc(r.name)} — ${fmtInfo(r.format).short}<br>Your team: ${sdot(me.squadId)}<b>${esc(sq ? sq.name : '')}</b> · ${['You', ...mates].join(', ')}`;
+        cta = `<button class="btn" data-action="enter-scores" data-rid="${r.id}">Enter scores</button>`;
+      } else {
       const myPairing = (r.pairings || []).find((p) => (p.teamA || []).includes(me.id) || (p.teamB || []).includes(me.id));
       if (myPairing) {
         const tA = myPairing.teamA || [], tB = myPairing.teamB || [];
@@ -265,6 +281,7 @@ function actionCard(stand) {
         lbl = target.status === 'live' ? 'Live now' : 'Up next';
         msg = `${esc(r.name)} — ${fmtInfo(r.format).short}` + (partnerIds.length ? `<br>You + ${names(partnerIds)} vs ${names(oppIds)}` : `<br>You vs ${names(oppIds)}`);
         cta = `<button class="btn" data-action="enter-scores" data-rid="${r.id}" data-pid="${myPairing.id}">Enter scores</button>`;
+      }
       }
       const tt = myTeeTime(r);
       if (tt) {
