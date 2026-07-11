@@ -157,6 +157,16 @@ td.c, th.c { text-align: center; }
 .match .tag { font-size: 13px; font-weight: 800; white-space: nowrap; text-align: right; }
 .match .pt { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
+/* live match scoreboard shown while entering scores */
+.livematch { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 12px; }
+.livematch .lm-side { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
+.livematch .lm-side span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.livematch .lm-side.r { justify-content: flex-end; text-align: right; }
+.livematch .lm-side.dim { opacity: .45; font-weight: 600; }
+.livematch .lm-mid { text-align: center; flex-shrink: 0; padding: 0 4px; }
+.livematch .lm-big { font-size: 16px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.livematch .lm-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
 /* ---------- round timeline ---------- */
 .round-card { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--ink); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow); padding: var(--s4); margin-bottom: var(--s3); cursor: pointer; }
 .round-card .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -563,6 +563,26 @@ function matchList(rr) {
   }).join('');
 }
 
+/* live head-to-head scoreboard for the matchup being scored (shown at the top
+ * of score entry so you always see where YOUR match stands, not just the team
+ * total). Works for singles / fourball / shamble / scramble (all use pairings). */
+function liveMatchBanner(r, res) {
+  const sa = squad(res.squadA), sb = squad(res.squadB);
+  const nm = (ids) => (ids || []).map((x) => esc(player(x) ? player(x).name : '?')).join(' / ');
+  const m = res.m || { played: 0, status: 0, result: 'IP' };
+  const aUp = m.status > 0, bUp = m.status < 0;
+  let big, sub;
+  if (m.played === 0) { big = 'All square'; sub = 'not started'; }
+  else if (m.result === 'A' || m.result === 'B') { big = Eng.matchTag(m, sa ? sa.name : 'A', sb ? sb.name : 'B'); sub = 'final'; }
+  else if (m.status === 0) { big = 'All square'; sub = 'thru ' + m.played; }
+  else { const L = aUp ? sa : sb; big = (L ? L.name : (aUp ? 'A' : 'B')) + ' ' + Math.abs(m.status) + ' UP'; sub = 'thru ' + m.played; }
+  return `<div class="livematch">
+    <div class="lm-side ${aUp ? 'lead' : bUp ? 'dim' : ''}">${sdot(res.squadA)}<span>${nm(res.pairing.teamA)}</span></div>
+    <div class="lm-mid"><div class="lm-big">${esc(big)}</div><div class="lm-sub">${esc(sub)}</div></div>
+    <div class="lm-side r ${bUp ? 'lead' : aUp ? 'dim' : ''}"><span>${nm(res.pairing.teamB)}</span>${sdot(res.squadB)}</div>
+  </div>`;
+}
+
 /* ---------------- SCORE ENTRY (hole stepper) ---------------- */
 function viewScore() {
   const r = round(ui.scoreRoundId);
@@ -619,6 +639,7 @@ function viewScore() {
   const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>
     <div class="card">
       <div class="field" style="margin-bottom:8px"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
+      ${liveMatchBanner(r, res)}
       ${modeSeg}`;
 
   if (ui.scoreMode === 'card') {

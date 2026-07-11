@@ -50,6 +50,7 @@ check('home');
 ['r1', 'r2', 'r3'].forEach((rid) => {
   fireClick({ action: 'open-round', id: rid }); check('round:' + rid);
   fireClick({ action: 'enter-scores', rid }); check('score:' + rid);
+  if (!appEl.innerHTML.includes('livematch')) { errors++; console.log('LIVEMATCH banner missing on', rid); }
   // step a few holes on whatever targets exist by re-reading rendered html for data-target
   const targets = [...appEl.innerHTML.matchAll(/data-target="([^"]+)"/g)].map((m) => m[1]);
   const uniq = [...new Set(targets)];
