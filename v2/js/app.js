@@ -1848,6 +1848,7 @@ try {
 // mid-edit in a text field so a remote update doesn't steal focus.
 let renderDirty = false;
 let lastTouch = 0;
+let lastScroll = 0;
 let flushTimer = null;
 const QUIET_MS = 700; // hold remote re-renders this long after a tap/keypress
 function nowMs() { try { return Date.now(); } catch (e) { return 0; } }
@@ -1860,7 +1861,7 @@ function isEditingText() {
 // within the last QUIET_MS. A live round fires remote updates constantly; this
 // keeps one from wiping out the control you're reaching for (e.g. a dropdown
 // you're about to open) before your tap lands.
-function isInteracting() { return isEditingText() || (nowMs() - lastTouch) < QUIET_MS; }
+function isInteracting() { return isEditingText() || (nowMs() - lastTouch) < QUIET_MS || (nowMs() - lastScroll) < QUIET_MS; }
 function scheduleFlush() {
   if (flushTimer) return;
   flushTimer = setTimeout(function tick() {
@@ -1883,15 +1884,30 @@ if (document.addEventListener) {
   });
   document.addEventListener('focusout', () => { if (renderDirty && !isInteracting()) { renderDirty = false; setTimeout(render, 0); } });
 }
-// shrink the hero once you scroll down a page
+// Shrink the hero once you scroll down. The hero is position:sticky and
+// shrinking it reduces page height, so a single threshold makes the browser
+// clamp the scroll back and oscillate (flicker). Use hysteresis — compact only
+// past 80px, expand only back under 16px — and throttle to one rAF per frame.
 try {
+  let heroTick = false;
   window.addEventListener('scroll', () => {
-    const c = (window.scrollY || document.documentElement.scrollTop || 0) > 36;
-    if (c !== heroCompact) {
-      heroCompact = c;
-      const h = app.querySelector('.hero');
-      if (h) h.classList.toggle('hero-compact', c);
-    }
+    lastScroll = nowMs(); // defer remote-driven re-renders until scrolling settles (no scroll-yank)
+    if (heroTick) return;
+    heroTick = true;
+    requestAnimationFrame(() => {
+      heroTick = false;
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      // Dead zone (24..140) must exceed how much the hero shrinks, or the
+      // resulting page-height drop could clamp us back under the expand line.
+      let want = heroCompact;
+      if (!heroCompact && y > 140) want = true;
+      else if (heroCompact && y < 24) want = false;
+      if (want !== heroCompact) {
+        heroCompact = want;
+        const h = app.querySelector('.hero');
+        if (h) h.classList.toggle('hero-compact', want);
+      }
+    });
   }, { passive: true });
 } catch (e) {}
 Store.init();
