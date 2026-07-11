@@ -430,12 +430,13 @@ function roundBoard(rr) {
   return `<div class="card"><h2>Matches</h2>${matchList(rr)}</div>`;
 }
 
-function teamLeaderboardCard(teams, holes, title) {
+function teamLeaderboardCard(teams, holes, title, highlightSid) {
   const rows = teams.map((t) => {
     const started = t.thru > 0;
-    return `<tr>
+    const mine = highlightSid && t.squadId === highlightSid ? ' class="mine"' : '';
+    return `<tr${mine}>
       <td class="c">${t.place ? '<b>' + t.place + '</b>' : '—'}</td>
-      <td>${sdot(t.squadId)} <b>${esc(t.name)}</b></td>
+      <td>${sdot(t.squadId)} <b>${esc(t.name)}</b>${mine ? ' <span class="you-tag">you</span>' : ''}</td>
       <td class="c num">${started ? t.gross : '—'}</td>
       <td class="c num"><b>${started ? t.net : '—'}</b></td>
       <td class="c num">${started ? fmtToPar(t.toPar) : ''}</td>
@@ -751,7 +752,10 @@ function viewScoreTeams(r, c) {
     <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
     <button data-action="score-mode" data-mode="card" class="${ui.scoreMode === 'card' ? 'active' : ''}">▦ Full card</button>
   </div>`;
-  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button><div class="card">${notice}${modeSeg}`;
+  // live team leaderboard glance so each team sees where they stand while scoring
+  const rr = resolveRound(S(), r);
+  const board = rr && rr.teamScramble ? teamLeaderboardCard(rr.teamScramble.teams, rr.teamScramble.holes, 'Live standings', myTeam) : '';
+  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>${board}<div class="card">${notice}${modeSeg}`;
   if (ui.scoreMode === 'card') {
     const units = entryTeams.map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, ch: teamScramCH(r, sid), target: `tscram:${sid}`, get: (hh) => getTeamScram(r, sid, hh) }));
     return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">Enter your team's scramble score each hole (one ball per team). Handicap is 25/20/15/10 off the low team (lowest plays scratch).</div></div>`;

@@ -147,6 +147,8 @@ td.c, th.c { text-align: center; }
 .breakdown td .pts { font-weight: 800; font-size: 16px; }
 .breakdown tr { cursor: pointer; }
 .breakdown tr:hover td { background: var(--surface); }
+.breakdown tr.mine td { background: rgba(27, 122, 61, 0.14); }
+.you-tag { font-size: 10px; font-weight: 700; color: #fff; background: var(--green); border-radius: 999px; padding: 1px 6px; vertical-align: middle; }
 .win { color: var(--green); }
 
 /* match row */
