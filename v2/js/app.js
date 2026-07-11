@@ -12,7 +12,7 @@ import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
 const app = document.getElementById('app');
-const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set(), importAsNew: false, ghinLoading: {} };
+const ui = { view: 'home', scope: 'overall', scoreRoundId: null, scorePairingId: null, holeIdx: 0, sheet: null, setupTab: 'tournament', scoreMode: 'hole', lastHole: {}, lastPairing: {}, playerSort: { key: 'name', dir: 1 }, openDetails: new Set(), importAsNew: false, ghinLoading: {}, scoreAllTeams: false };
 let heroCompact = false;
 
 /* ---------------- helpers ---------------- */
@@ -725,23 +725,38 @@ function cardTable(r, holes, units) {
   return table;
 }
 
-/* team-scramble score entry: one row per team, no pairings */
+/* team-scramble score entry: one row per team, no pairings.
+ * In a scramble each team plays one ball, so you should only enter YOUR team's
+ * score. If a player is picked we filter to their team; a toggle lets whoever
+ * runs the whole event enter every team. */
 function viewScoreTeams(r, c) {
   const teams = squadIds();
   if (!teams.length) return '<div class="card"><div class="empty">Add teams in Setup → Players, then assign players to them.</div></div>';
   const h = Math.max(0, Math.min(ui.holeIdx, c.holes.length - 1));
   ui.holeIdx = h;
   const hole = c.holes[h];
+  const me = meId() ? player(meId()) : null;
+  const myTeam = me && teams.includes(me.squadId) ? me.squadId : null;
+  const showAll = ui.scoreAllTeams || !myTeam;
+  const entryTeams = showAll ? teams : [myTeam];
+  let notice;
+  if (myTeam && !showAll) {
+    notice = `<div class="tip" style="margin:0 0 12px">Entering scores for <b>${sdot(myTeam)}${esc(squad(myTeam).name)}</b> — your team. <button class="linklike" data-action="score-all-teams">Enter all teams</button></div>`;
+  } else if (myTeam && showAll) {
+    notice = `<div class="tip" style="margin:0 0 12px">Entering <b>all teams</b>. <button class="linklike" data-action="score-my-team">Just my team (${esc(squad(myTeam).name)})</button></div>`;
+  } else {
+    notice = `<div class="tip" style="margin:0 0 12px">Scoring all teams. <button class="linklike" data-action="tab" data-tab="mycard">Pick your player</button> to score just your own team.</div>`;
+  }
   const modeSeg = `<div class="seg" style="margin:0 0 12px">
     <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
     <button data-action="score-mode" data-mode="card" class="${ui.scoreMode === 'card' ? 'active' : ''}">▦ Full card</button>
   </div>`;
-  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button><div class="card">${modeSeg}`;
+  const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button><div class="card">${notice}${modeSeg}`;
   if (ui.scoreMode === 'card') {
-    const units = teams.map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, ch: teamScramCH(r, sid), target: `tscram:${sid}`, get: (hh) => getTeamScram(r, sid, hh) }));
-    return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">One row per team — enter the team's scramble score each hole. Handicap is 25/20/15/10 off the low team (lowest plays scratch).</div></div>`;
+    const units = entryTeams.map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, ch: teamScramCH(r, sid), target: `tscram:${sid}`, get: (hh) => getTeamScram(r, sid, hh) }));
+    return head + cardTable(r, c.holes, units) + `<div class="muted" style="font-size:12px;margin-top:8px">Enter your team's scramble score each hole (one ball per team). Handicap is 25/20/15/10 off the low team (lowest plays scratch).</div></div>`;
   }
-  const units = teams.map((sid) => {
+  const units = entryTeams.map((sid) => {
     const ch = teamScramCH(r, sid);
     const mem = Object.values(S().players).filter((p) => p.squadId === sid).map((p) => p.name).join(' / ');
     return unitRow({ rid: r.id, target: `tscram:${sid}`, name: (squad(sid) ? squad(sid).name : sid) + ' — ' + mem, sdotId: sid, ch, val: getTeamScram(r, sid, h), hole, holes: c.holes.length });
@@ -1455,6 +1470,8 @@ app.addEventListener('click', (e) => {
     'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
     'sort-players': () => { const k = t.dataset.key; if (ui.playerSort.key === k) ui.playerSort.dir *= -1; else ui.playerSort = { key: k, dir: 1 }; render(); },
     'score-mode': () => { ui.scoreMode = t.dataset.mode; render(); },
+    'score-all-teams': () => { ui.scoreAllTeams = true; render(); },
+    'score-my-team': () => { ui.scoreAllTeams = false; render(); },
     hole: () => { ui.holeIdx += Number(t.dataset.dir); ui.lastHole[ui.scoreRoundId] = ui.holeIdx; render(); },
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
