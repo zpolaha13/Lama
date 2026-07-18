@@ -211,17 +211,27 @@ td.c, th.c { text-align: center; }
 .cardcell:focus { outline: 2px solid var(--green); border-radius: 4px; }
 .cdots { position: absolute; top: 1px; right: 2px; font-size: 8px; line-height: 1; color: var(--under); letter-spacing: -1px; pointer-events: none; }
 
-/* post-round scorecard marks — circle = under par, square = over par */
+/* post-round scorecard marks — red circle = under par, square = over par */
 .sc { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 21px; padding: 0 2px; font-weight: 700; box-sizing: border-box; font-variant-numeric: tabular-nums; }
 .sc.miss { color: var(--muted); font-weight: 400; }
-.sc.m-birdie, .sc.m-eagle { border: 1.5px solid var(--ink); border-radius: 50%; }
-.sc.m-bogey, .sc.m-double { border: 1.5px solid var(--ink); }
-.sc.m-eagle, .sc.m-double { outline: 1.5px solid var(--ink); outline-offset: 1.5px; }
-.sc-legend { font-size: 12px; color: var(--muted); margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
-.sc-legend .sc { min-width: 20px; height: 20px; font-size: 11px; }
-.sc-totals { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-.sc-trow { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-.sc-trow .tot { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sc.m-birdie, .sc.m-eagle { border: 1.5px solid var(--under); border-radius: 50%; color: var(--under); }
+.sc.m-bogey, .sc.m-double { border: 1.5px solid var(--evenover); color: var(--evenover); }
+.sc.m-eagle { outline: 1.5px solid var(--under); outline-offset: 1.5px; }
+.sc.m-double { outline: 1.5px solid var(--evenover); outline-offset: 1.5px; }
+
+/* scorecard: collapsed totals list; tap a name to expand the card */
+.sc-item { border-bottom: 1px solid var(--hairline); }
+.sc-item:last-of-type { border-bottom: 0; }
+.sc-row { display: flex; align-items: center; gap: 10px; padding: 11px 2px; cursor: pointer; list-style: none; }
+.sc-row::-webkit-details-marker { display: none; }
+.sc-row::after { content: '\203A'; color: var(--muted); font-size: 18px; line-height: 1; transition: transform .15s ease; }
+.sc-item[open] .sc-row::after { transform: rotate(90deg); }
+.sc-nm { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-tot { display: flex; align-items: baseline; gap: 10px; }
+.sc-thru { font-size: 11px; }
+.sc-g { font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; }
+.sc-tot .topar { font-size: 13px; font-weight: 800; min-width: 26px; text-align: right; }
+.sc-detail { padding: 2px 0 12px; }
 
 .score-shape { display: inline-grid; place-items: center; min-width: 34px; }
 .shape-circle { border: 2px solid var(--under); border-radius: 50%; padding: 0 6px; }

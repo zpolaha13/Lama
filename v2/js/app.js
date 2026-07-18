@@ -779,16 +779,10 @@ function roundUnits(r) {
   return units;
 }
 
-/* read-only post-round scorecard: gross scores with birdie circles / bogey
- * squares (double for eagle+ / double-bogey+), Out/In subtotals and to-par. */
-function scorecardSummary(r) {
-  const c = course(r.courseId);
-  if (!c || !c.holes) return '';
-  const holes = c.holes;
-  const units = roundUnits(r);
-  if (!units.length) return '';
+/* read-only hole-by-hole grid (marks) for a set of units — shared by the
+ * per-player expand and any full-card view. */
+function cardGrid(r, holes, units) {
   const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
-  if (!units.some((u) => holes.some((_, i) => val(u, i) != null))) return ''; // nothing scored yet
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
     for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
@@ -812,15 +806,35 @@ function scorecardSummary(r) {
   };
   let table = `<div class="cardscroll"><table class="scgrid">${section(0, Math.min(9, holes.length), 'Out')}`;
   if (holes.length > 9) table += section(9, holes.length, 'In');
-  table += `</table></div>`;
-  const totals = units.map((u) => {
-    let g = 0, pp = 0, any = false;
-    holes.forEach((h, i) => { const v = val(u, i); if (v != null) { g += v; pp += h.par; any = true; } });
-    return any ? `<div class="sc-trow">${sdot(u.sdotId)} <b>${esc(u.name)}</b><span class="tot">${g} <span class="muted">(${fmtToPar(g - pp)})</span></span></div>` : '';
+  return table + `</table></div>`;
+}
+
+/* Post-round scorecard: everyone's total by default (leaderboard-style list);
+ * tap a name to expand that player's hole-by-hole card with birdie circles /
+ * bogey squares — like Golfshot / 18Birdies / Golf Genius. */
+function scorecardSummary(r) {
+  const c = course(r.courseId);
+  if (!c || !c.holes) return '';
+  const holes = c.holes;
+  const units = roundUnits(r);
+  if (!units.length) return '';
+  const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
+  const stat = (u) => { let g = 0, pp = 0, thru = 0; holes.forEach((h, i) => { const v = val(u, i); if (v != null) { g += v; pp += h.par; thru++; } }); return { g, pp, thru, tp: g - pp, started: thru > 0 }; };
+  if (!units.some((u) => stat(u).started)) return ''; // nothing scored yet
+  const rows = units.map((u, idx) => {
+    const s = stat(u);
+    const key = 'sc-' + r.id + '-' + idx;
+    const tot = s.started
+      ? `<span class="sc-thru muted">${s.thru === holes.length ? 'F' : 'thru ' + s.thru}</span><span class="sc-g">${s.g}</span><span class="topar ${toParClass(s.tp)}">${fmtToPar(s.tp)}</span>`
+      : '<span class="muted">— yet to tee off</span>';
+    return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} class="sc-item">
+      <summary class="sc-row"><span class="sc-nm">${sdot(u.sdotId)} ${esc(u.name)}</span><span class="sc-tot">${tot}</span></summary>
+      <div class="sc-detail">${cardGrid(r, holes, [u])}</div>
+    </details>`;
   }).join('');
-  return `<div class="card"><h2>Scorecard</h2>${table}
-    <div class="sc-legend"><span class="sc m-birdie">3</span> birdie · <span class="sc m-eagle">2</span> eagle+ · <span class="sc m-bogey">5</span> bogey · <span class="sc m-double">6</span> dbl+</div>
-    <div class="sc-totals">${totals}</div>
+  return `<div class="card"><h2>Scorecard</h2>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">Tap a name for the hole-by-hole card. <span class="sc m-birdie">3</span> under · <span class="sc m-bogey">5</span> over.</div>
+    ${rows}
   </div>`;
 }
 
