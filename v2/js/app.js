@@ -438,6 +438,7 @@ function viewRoundDetail() {
     </div>
     ${teeTimesCard(r)}
     ${roundBoard(rr)}
+    ${scorecardSummary(r)}
     ${skinsCard(r)}`;
 }
 
@@ -741,6 +742,86 @@ function cardTable(r, holes, units) {
   if (holes.length > 9) table += section(9, 18, 'In');
   table += `</table></div>`;
   return table;
+}
+
+/* mark for a gross score vs par — like a real card: circle under, square over */
+function scoreMark(score, par) {
+  if (score == null || par == null || isNaN(score)) return '';
+  const d = Number(score) - par;
+  if (d <= -2) return 'm-eagle';   // double circle
+  if (d === -1) return 'm-birdie'; // circle
+  if (d === 1) return 'm-bogey';   // square
+  if (d >= 2) return 'm-double';   // double square
+  return '';                        // par — no mark
+}
+
+/* every score-bearing row for a round: players, or teams for team-ball formats */
+function roundUnits(r) {
+  if (r.format === 'teamscramble') {
+    return squadIds().map((sid) => ({ name: squad(sid) ? squad(sid).name : sid, sdotId: sid, get: (h) => getTeamScram(r, sid, h) }));
+  }
+  const units = [];
+  (r.pairings || []).forEach((p) => {
+    if (r.format === 'scramble') {
+      const res = resolvePairingMatch(S(), r, p);
+      ['A', 'B'].forEach((side) => {
+        const ids = side === 'A' ? (p.teamA || []) : (p.teamB || []);
+        const sid = side === 'A' ? res.squadA : res.squadB;
+        units.push({ name: (squad(sid) ? squad(sid).name : side) + ' — ' + ids.map((x) => player(x) ? player(x).name : '?').join('/'), sdotId: sid, get: (h) => getTeam(r, p.id, side, h) });
+      });
+    } else {
+      [...(p.teamA || []), ...(p.teamB || [])].forEach((pid) => {
+        const pl = player(pid);
+        units.push({ name: pl ? pl.name : '?', sdotId: pl ? pl.squadId : null, get: (h) => getScore(r, pid, h) });
+      });
+    }
+  });
+  return units;
+}
+
+/* read-only post-round scorecard: gross scores with birdie circles / bogey
+ * squares (double for eagle+ / double-bogey+), Out/In subtotals and to-par. */
+function scorecardSummary(r) {
+  const c = course(r.courseId);
+  if (!c || !c.holes) return '';
+  const holes = c.holes;
+  const units = roundUnits(r);
+  if (!units.length) return '';
+  const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
+  if (!units.some((u) => holes.some((_, i) => val(u, i) != null))) return ''; // nothing scored yet
+  const section = (start, end, label) => {
+    let head = `<tr><th class="cardname">Hole</th>`;
+    for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
+    head += `<th>${label}</th></tr>`;
+    let par = `<tr class="dimrow"><td class="cardname">Par</td>`, ps = 0;
+    for (let i = start; i < end; i++) { par += `<td>${holes[i].par}</td>`; ps += holes[i].par; }
+    par += `<td>${ps}</td>`;
+    let rows = '';
+    units.forEach((u) => {
+      let row = `<tr><td class="cardname">${sdot(u.sdotId)} ${esc(u.name)}</td>`;
+      let tot = 0, any = false;
+      for (let i = start; i < end; i++) {
+        const v = val(u, i);
+        if (v != null) { tot += v; any = true; }
+        row += `<td>${v != null ? `<span class="sc ${scoreMark(v, holes[i].par)}">${v}</span>` : '<span class="sc miss">–</span>'}</td>`;
+      }
+      row += `<td class="num"><b>${any ? tot : ''}</b></td></tr>`;
+      rows += row;
+    });
+    return head + par + rows;
+  };
+  let table = `<div class="cardscroll"><table class="scgrid">${section(0, Math.min(9, holes.length), 'Out')}`;
+  if (holes.length > 9) table += section(9, holes.length, 'In');
+  table += `</table></div>`;
+  const totals = units.map((u) => {
+    let g = 0, pp = 0, any = false;
+    holes.forEach((h, i) => { const v = val(u, i); if (v != null) { g += v; pp += h.par; any = true; } });
+    return any ? `<div class="sc-trow">${sdot(u.sdotId)} <b>${esc(u.name)}</b><span class="tot">${g} <span class="muted">(${fmtToPar(g - pp)})</span></span></div>` : '';
+  }).join('');
+  return `<div class="card"><h2>Scorecard</h2>${table}
+    <div class="sc-legend"><span class="sc m-birdie">3</span> birdie · <span class="sc m-eagle">2</span> eagle+ · <span class="sc m-bogey">5</span> bogey · <span class="sc m-double">6</span> dbl+</div>
+    <div class="sc-totals">${totals}</div>
+  </div>`;
 }
 
 /* team-scramble score entry: one row per team, no pairings.

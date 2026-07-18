@@ -211,6 +211,18 @@ td.c, th.c { text-align: center; }
 .cardcell:focus { outline: 2px solid var(--green); border-radius: 4px; }
 .cdots { position: absolute; top: 1px; right: 2px; font-size: 8px; line-height: 1; color: var(--under); letter-spacing: -1px; pointer-events: none; }
 
+/* post-round scorecard marks — circle = under par, square = over par */
+.sc { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 21px; padding: 0 2px; font-weight: 700; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+.sc.miss { color: var(--muted); font-weight: 400; }
+.sc.m-birdie, .sc.m-eagle { border: 1.5px solid var(--ink); border-radius: 50%; }
+.sc.m-bogey, .sc.m-double { border: 1.5px solid var(--ink); }
+.sc.m-eagle, .sc.m-double { outline: 1.5px solid var(--ink); outline-offset: 1.5px; }
+.sc-legend { font-size: 12px; color: var(--muted); margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.sc-legend .sc { min-width: 20px; height: 20px; font-size: 11px; }
+.sc-totals { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.sc-trow { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.sc-trow .tot { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+
 .score-shape { display: inline-grid; place-items: center; min-width: 34px; }
 .shape-circle { border: 2px solid var(--under); border-radius: 50%; padding: 0 6px; }
 .shape-square { border: 2px solid var(--evenover); padding: 0 6px; }

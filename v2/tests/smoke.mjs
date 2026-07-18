@@ -63,6 +63,10 @@ check('home');
   fireClick({ action: 'score-mode', mode: 'hole' });
 });
 
+// post-round scorecard summary renders with circle/square marks
+fireClick({ action: 'open-round', id: 'r1' });
+if (appEl.innerHTML.includes('Scorecard') && /class="sc /.test(appEl.innerHTML)) console.log('ok scorecard-summary'); else { errors++; console.log('SCORECARD summary missing'); }
+
 // standings now reflects scores
 fireClick({ action: 'tab', tab: 'standings' });
 fireClick({ action: 'scope', scope: 'r1' }); check('standings-round');
