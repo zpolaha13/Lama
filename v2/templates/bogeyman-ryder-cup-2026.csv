@@ -1,0 +1,83 @@
+#TOURNAMENT
+name,winPoints,tiePoints,joinCode,weightMode,pointsPerRound
+Bogey-Man Ryder Cup 2026,1,0.5,BOGEY,true,4
+
+// Teams come from Thursday night's live draft. Everyone starts on Team 1:
+// after the draft, switch Team 2's picks in Setup > Players and rename the teams.
+#SQUADS
+id,name,color
+team-1,Team 1,#D0021B
+team-2,Team 2,#1B6FB3
+
+// Handicap index 0 = no strokes. Enter each player's index in Setup > Players.
+#PLAYERS
+name,index,squad,defaultTee,ghin
+Dave Haley,0,team-1,,
+Josh Hess,0,team-1,,
+Zach Polenta,0,team-1,,
+Jordan Foster,0,team-1,,
+Scott Simmons,0,team-1,,
+Will Sullivan,0,team-1,,
+Phil Sullivan,0,team-1,,
+Jeff Viola,0,team-1,,
+Colby Chapin,0,team-1,,
+Jimbo Woerner,0,team-1,,
+Pat Durham,0,team-1,,
+Nick Wimpey,0,team-1,,
+Tyler Owen,0,team-1,,
+Joey LeCompte,0,team-1,,
+Jonny Kennedy,0,team-1,,
+Alex Whisenhunt,0,team-1,,
+
+#PAYOUTS
+potPerPlayer,place1,place2,place3
+0,0.6,0.3,0.1
+
+// Cutter Creek Golf Club, Snow Hill NC. Men's ratings from the club's current
+// scorecard; par and hole handicaps from public course listings. Check them
+// against the card at the course (Setup > Courses).
+#COURSES
+courseId,courseName,teeName,rating,slope
+cutter,Cutter Creek Golf Club,Black,75.5,141
+cutter,Cutter Creek Golf Club,Blue,73.7,137
+cutter,Cutter Creek Golf Club,Brown,71.7,131
+cutter,Cutter Creek Golf Club,Green,68.9,128
+cutter,Cutter Creek Golf Club,White,65.6,117
+
+#HOLES
+courseId,hole,par,si
+cutter,1,4,14
+cutter,2,5,6
+cutter,3,3,10
+cutter,4,4,2
+cutter,5,5,8
+cutter,6,4,16
+cutter,7,4,12
+cutter,8,3,18
+cutter,9,4,4
+cutter,10,4,15
+cutter,11,5,7
+cutter,12,4,17
+cutter,13,4,3
+cutter,14,4,1
+cutter,15,3,13
+cutter,16,4,11
+cutter,17,3,9
+cutter,18,5,5
+
+// 30 points in all (Friday 16, Saturday 14): first team to 15.5 wins.
+// Handicap % follows the usual match-play allowances, strokes off the low player
+// or side. With every index at 0 nobody gets strokes, so it plays as gross.
+#ROUNDS
+roundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch,ptsPerHole,ptsMatchBonus,skinsValue,skinsMode,skinsTie,date,perSide
+fri-am,Fri AM — Fourball,cutter,fourball,Blue,90,relative,match,2,0.5,1,0,net,rollover,"Fri, Nov 6",2
+fri-pm,Fri PM — Foursomes,cutter,foursomes,Blue,100,relative,match,2,0.5,1,0,net,rollover,"Fri, Nov 6",2
+sat-am,Sat AM — Singles,cutter,singles,Blue,100,relative,match,1,0.5,1,0,net,rollover,"Sat, Nov 7",1
+sat-pm,Sat PM — Scramble,cutter,scramble,Blue,100,relative,match,3,0.5,1,0,net,rollover,"Sat, Nov 7",4
+
+// Matchups come after the draft: Setup > Rounds > each round's Matchups.
+#PAIRINGS
+roundId,teamA,teamB
+
+#TEETIMES
+roundId,time,players
