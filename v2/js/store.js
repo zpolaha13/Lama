@@ -219,7 +219,7 @@ export function createTournament(opts) {
   }
   if (mode === 'copy') {
     init = JSON.parse(JSON.stringify(state)); // duplicate current setup, clear scores
-    Object.values(init.rounds || {}).forEach((r) => { r.scores = {}; r.teamScores = {}; r.status = 'auto'; });
+    Object.values(init.rounds || {}).forEach((r) => { r.scores = {}; r.teamScores = {}; r.lastHoles = {}; r.status = 'auto'; });
     init.ui = { meId: null };
   } else {
     init = emptyState();

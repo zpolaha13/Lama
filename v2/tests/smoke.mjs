@@ -149,6 +149,41 @@ fireChange({ action: 'round-tee', id: 'r1' }, 'legacy-white'); check('round-tee'
 fireChange({ action: 'round-tee-override', rid: 'r1', pid: 'p1' }, 'legacy-blue'); check('tee-override');
 fireClick({ action: 'del-player', id: 'p12' }); check('del-player');
 
+// foursomes (alternate shot): one team row per side, team handicap label
+fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
+fireChange({ action: 'round-format', id: 'r2' }, 'foursomes'); check('round-foursomes-setup');
+fireClick({ action: 'tab', tab: 'rounds' }); fireClick({ action: 'open-round', id: 'r2' }); check('foursomes-round');
+if (appEl.innerHTML.includes('Foursomes (Alternate Shot)') && appEl.innerHTML.includes('50% of combined')) console.log('ok foursomes label + handicap'); else { errors++; console.log('FOURSOMES label/handicap text missing'); }
+fireClick({ action: 'enter-scores', rid: 'r2' }); check('foursomes-score');
+const ftargets = [...new Set([...appEl.innerHTML.matchAll(/data-target="(team:[^"]+)"/g)].map((m) => m[1]))];
+if (ftargets.length === 2) console.log('ok foursomes team rows'); else { errors++; console.log('FOURSOMES team rows', ftargets.length); }
+ftargets.forEach((tg) => fireClick({ action: 'setpar', rid: 'r2', target: tg })); // hole 1 halved
+// sunset: shorten this match to 1 hole -> halved, and the banner says so
+const lhSel = [...appEl.innerHTML.matchAll(/data-action="match-lasthole" data-rid="r2" data-pid="([^"]+)"/g)][0];
+if (!lhSel) { errors++; console.log('LAST-HOLE control missing'); }
+else {
+  fireChange({ action: 'match-lasthole', rid: 'r2', pid: lhSel[1] }, '1'); check('match-lasthole');
+  if (appEl.innerHTML.includes('Short match: ends after hole 1') && appEl.innerHTML.includes('ends after 1')) console.log('ok short match shown'); else { errors++; console.log('SHORT match not shown'); }
+  const res = Store.get().rounds.r2.lastHoles;
+  if (res && res[lhSel[1]] === 1) console.log('ok lastHoles stored per match'); else { errors++; console.log('lastHoles not stored', JSON.stringify(res)); }
+  fireChange({ action: 'match-lasthole', rid: 'r2', pid: lhSel[1] }, '18'); check('match-lasthole-full');
+}
+// "end it here" button + round-level sunset controls
+fireClick({ action: 'call-match', rid: 'r2', pid: lhSel ? lhSel[1] : '', n: '1' }); check('call-match');
+fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
+if (appEl.innerHTML.includes('data-action="round-lasthole"') && appEl.innerHTML.includes('End unfinished matches now')) console.log('ok round sunset controls'); else { errors++; console.log('ROUND sunset controls missing'); }
+fireChange({ action: 'round-lasthole', id: 'r2' }, '15'); check('round-lasthole');
+if (Store.get().rounds.r2.lastHole === 15) console.log('ok round lastHole stored'); else { errors++; console.log('round lastHole not stored'); }
+fireChange({ action: 'round-lasthole', id: 'r2' }, '');
+if (Store.get().rounds.r2.lastHole == null) console.log('ok round lastHole cleared'); else { errors++; console.log('round lastHole not cleared'); }
+fireClick({ action: 'call-round', rid: 'r1' }); check('call-round');
+try { fireClick({ action: 'print-cards', rid: 'r2' }); console.log('ok foursomes print-cards'); } catch (e) { errors++; console.log('FOURSOMES PRINT ERR', e.message); }
+fireClick({ action: 'tab', tab: 'home' }); fireClick({ action: 'sheet', sheet: 'how' });
+if (appEl.innerHTML.includes('Running out of light')) console.log('ok sunset rule in how-it-works'); else { errors++; console.log('SUNSET rule missing from sheet'); }
+fireClick({ action: 'close-sheet' });
+fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
+fireChange({ action: 'round-format', id: 'r2' }, 'fourball'); // back to fourball for the skins checks below
+
 // setup PIN lock: setting a PIN locks THIS device immediately (no lock-now needed)
 fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'tournament' });
 fireChange({ action: 'setup-pin' }, '1234');

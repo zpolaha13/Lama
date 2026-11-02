@@ -144,8 +144,10 @@ export const FORMAT_INFO = {
     explainer: 'You and a partner each play your own ball; your better net counts each hole. Win the match to score for your team.' },
   shamble: { label: 'Shamble (Best Ball)', short: '2v2', perSide: 2,
     explainer: 'Both partners tee off, play the best drive, then each plays their own ball in — your better net counts each hole. Win the match to score for your team.' },
-  scramble: { label: 'Texas Scramble', short: '2v2', perSide: 2,
-    explainer: 'You and a partner play one ball from the best shot each time, against the other team\'s scramble. Win the match to score for your team.' },
+  foursomes: { label: 'Foursomes (Alternate Shot)', short: '2v2', perSide: 2, teamBall: true,
+    explainer: 'You and a partner play ONE ball, taking turns hitting it. One of you tees off on the odd holes, the other on the even holes. Low net wins each hole. Win the match to score for your team.' },
+  scramble: { label: 'Texas Scramble', short: '2v2', perSide: 2, teamBall: true,
+    explainer: 'Your side plays one ball from the best shot each time, against the other side\'s scramble. Win the match to score for your team.' },
   teamscramble: { label: 'Scramble — teams (low net)', short: 'Teams', perSide: 0,
     explainer: 'Every team plays one scramble ball (captain\'s choice). Lowest team net total wins — the leaderboard ranks all teams.' },
 };

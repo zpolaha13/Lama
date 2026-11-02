@@ -108,6 +108,18 @@ export function scrambleHandicap(chs, allowancePct) {
   return Math.round(sum * pct);
 }
 
+/* Foursomes (alternate shot) TEAM handicap: 50% of the side's combined course
+ * handicaps, the WHS recommendation for foursomes match play. The partners
+ * hit one ball in turn, so the side gets one handicap. `allowancePct`
+ * (default 100) scales it further if a group wants fewer strokes. Rounds once. */
+export function foursomesHandicap(chs, allowancePct) {
+  const list = (Array.isArray(chs) ? chs : [chs]).filter((x) => x != null && !isNaN(x)).map(Number);
+  if (!list.length) return 0;
+  const pct = (allowancePct == null ? 100 : Number(allowancePct)) / 100;
+  const sum = list.reduce((s, v) => s + v, 0);
+  return Math.round(sum * 0.5 * pct);
+}
+
 /* Resolve a match from two net-per-hole arrays.
  * result: 'A' | 'B' | 'AS' | 'IP'. status is A-minus-B. */
 export function matchFromNets(netsA, netsB, holesCount) {
