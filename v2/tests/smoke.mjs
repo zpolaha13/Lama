@@ -95,6 +95,47 @@ fireChange({ action: 'player-ghin', id: 'parker' }, '1234567');
 fireClick({ action: 'ghin-refresh', id: 'parker' }); check('ghin');
 ['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
 check('players-sorted');
+// GHIN find by name + add from GHIN (GHIN faked; token path, no helper deployed)
+{
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    const m = /[?&]first_name=([^&]*)/.exec(String(url)); // (this harness stubs out URL)
+    const first = m ? decodeURIComponent(m[1]).toLowerCase() : '';
+    const all = [{ ghin: 5550001, first_name: 'Robert', last_name: 'Bernie', club_name: 'Talamore', state: 'NC', handicap_index: '7.1' },
+      { ghin: 5550002, first_name: 'Bernard', last_name: 'Bernie', club_name: 'Mid South', state: 'NC', handicap_index: '+0.4' }];
+    const list = all.filter((g) => !first || g.first_name.toLowerCase().startsWith(first));
+    return { ok: true, status: 200, json: async () => ({ golfers: list }) };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  fireClick({ action: 'setup-tab', tab: 'players' });
+  if (appEl.innerHTML.includes('data-action="ghin-add"') && appEl.innerHTML.includes('data-action="ghin-find"')) console.log('ok ghin find/add buttons'); else { errors++; console.log('GHIN find/add buttons missing'); }
+  fireChange({ action: 'ghin-token' }, 'Bearer TESTTOKEN');
+  const bernie = Object.values(Store.get().players).find((p) => p.name === 'Bernie');
+  if (bernie) {
+    Store.update((s) => { s.players[bernie.id].ghin = ''; });
+    fireClick({ action: 'ghin-find', id: bernie.id }); await tick(); await tick();
+    // one-word name -> last name search; nickname miss isn't possible here, so expect both results
+    if (appEl.innerHTML.includes('Find Bernie in GHIN') && appEl.innerHTML.includes('Robert Bernie') && appEl.innerHTML.includes('+0.4')) console.log('ok ghin find results'); else { errors++; console.log('GHIN find results missing', (appEl.innerHTML.match(/<h2>Find[\s\S]{0,900}/) || ['no sheet'])[0].replace(/\s+/g, ' ').slice(0, 900)); }
+    fireClick({ action: 'gf-pick', i: '0' }); await tick();
+    const b2 = Store.get().players[bernie.id];
+    if (b2.ghin === '5550001' && b2.index === 7.1) console.log('ok ghin pick fills GHIN # + index'); else { errors++; console.log('GHIN pick wrong', b2.ghin, b2.index); }
+  } else { errors++; console.log('no Bernie in sample'); }
+  const before = Object.keys(Store.get().players).length;
+  fireClick({ action: 'ghin-add' }); await tick();
+  ui_find: {
+    // empty name: no search yet; the sheet is open and asks for a last name
+    if (!appEl.innerHTML.includes('Add players from GHIN')) { errors++; console.log('GHIN add sheet missing'); break ui_find; }
+    console.log('ok ghin add sheet');
+  }
+  fireClick({ action: 'close-sheet' }); check('ghin-sheet-closed');
+  if (!appEl.innerHTML.includes('Add players from GHIN')) console.log('ok done button closes sheet'); else { errors++; console.log('sheet did not close'); }
+  if (Object.keys(Store.get().players).length === before) console.log('ok nothing added without a pick'); else { errors++; console.log('player added unexpectedly'); }
+  if (seen.every((u) => u.startsWith('https://api2.ghin.com/'))) console.log('ok direct GHIN calls without helper'); else { errors++; console.log('unexpected GHIN url', seen); }
+  fireChange({ action: 'ghin-token' }, '');
+  globalThis.fetch = realFetch;
+}
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');
 // print scorecards for all rounds (exercises card builder across all 3 formats)
 try { fireClick({ action: 'print-cards' }); console.log('ok print-cards built'); } catch (e) { errors++; console.log('PRINT ERR', e.message); }

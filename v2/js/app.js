@@ -1189,7 +1189,11 @@ function setupPlayers() {
   const sortBtn = (k, label) => `<button class="seg-btn ${sort.key === k ? 'active' : ''}" data-action="sort-players" data-key="${k}">${label}${caret(k)}</button>`;
   const loadingMap = ui.ghinLoading || {};
   const tokenSet = !!getGhinToken();
-  const ghinBox = `<details class="ghin-auto" data-dk="ghin-auto" ${ui.openDetails.has('ghin-auto') ? 'open' : ''}>
+  // With the GHIN helper deployed (GHIN_PROXY_URL) nobody needs a token.
+  const ghinBox = GHIN_PROXY_URL ? `<div class="ghin-auto" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px">
+      <span><b>⚡ GHIN connected</b> <span class="muted" style="font-size:12px">· 🔎 Find by name, ↻ Get to refresh</span></span>
+      <button class="btn secondary small" data-action="ghin-get-all">↻ Get all</button>
+    </div>` : `<details class="ghin-auto" data-dk="ghin-auto" ${ui.openDetails.has('ghin-auto') ? 'open' : ''}>
     <summary>⚡ GHIN auto-fill ${tokenSet ? '<span class="ok-tag">token set ✓</span>' : '<span class="muted">— paste a token</span>'}</summary>
     <div class="ghin-auto-body">
       <input class="ghin-token-in" type="password" placeholder="Paste GHIN token (Bearer …)" data-action="ghin-token" value="${esc(getGhinToken())}">
@@ -1210,11 +1214,13 @@ function setupPlayers() {
       <div class="pcard-r2">
         <div class="pf"><label>Index</label><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></div>
         <div class="pf pf-ghin"><label>GHIN #</label><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"></div>
-        <button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>
+        ${String(p.ghin || '').replace(/\D/g, '')
+          ? `<button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>`
+          : `<button class="btn secondary small ghin-btn" data-action="ghin-find" data-id="${id}" title="Look this player up in GHIN by name">🔎 Find</button>`}
       </div>
     </div>`; }).join('')}
-    <div class="muted" style="font-size:12px;margin-top:4px">Tap <b>↻ Get</b> to pull a player's Index from GHIN (needs a token in the box above), or edit any Index by hand. No token? The <b>GHIN app → Golfer Lookup</b> shows it instantly.</div>
-    <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
+    <div class="muted" style="font-size:12px;margin-top:4px">No GHIN # yet? Tap <b>🔎 Find</b> to look the player up by name and fill in their GHIN # and Index. With a GHIN #, <b>↻ Get</b> refreshes the Index.${GHIN_PROXY_URL ? '' : ' Both need a token in the box above.'} You can always type an Index by hand.</div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button><button class="btn secondary small" data-action="ghin-add">🔎 Add from GHIN</button></div>
   </div>`;
   return html;
 }
@@ -1595,6 +1601,7 @@ function mePickerSheet() {
 function sheet() {
   if (ui.sheet === 'switch') return switchSheet();
   if (ui.sheet === 'me') return mePickerSheet();
+  if (ui.sheet === 'ghin') return ghinFindSheet();
   if (ui.sheet !== 'how') return '';
   const st = S();
   const stand = computeStandings(st);
@@ -1653,7 +1660,19 @@ app.addEventListener('click', (e) => {
     'weight-mode': () => Store.update((s) => { s.tournament.weightMode = s.tournament.weightMode === 'normalized' ? 'true' : 'normalized'; }),
     'set-weight': () => { Store.update((s) => { s.tournament.weightMode = t.value; }); try { e.target.blur(); } catch (err) {} render(); },
     sheet: () => { ui.sheet = t.dataset.sheet; render(); },
-    'close-sheet': () => { if (e.target.closest('[data-stop]')) return; ui.sheet = null; render(); },
+    // a tap inside a sheet bubbles up to the backdrop's close action: ignore that,
+    // but a Done/Close button that is itself close-sheet must still close it
+    'close-sheet': () => { if (t.classList && t.classList.contains('sheet-backdrop') && e.target.closest('[data-stop]')) return; ui.sheet = null; ui.ghinFind = null; render(); },
+    'ghin-find': () => openGhinFind(t.dataset.id),
+    'ghin-add': () => openGhinFind(null),
+    'gf-search': () => {
+      const f = ui.ghinFind; if (!f) return;
+      const val = (id) => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      f.first = val('gf-first'); f.last = val('gf-last'); f.state = val('gf-state').toUpperCase();
+      try { if (f.state) localStorage.setItem(GHIN_STATE_KEY, f.state); } catch (err) {}
+      runGhinFind();
+    },
+    'gf-pick': () => ghinPick(Number(t.dataset.i)),
     theme: () => toggleTheme(),
     boost: () => toggleBoost(),
     share: () => shareLink(),
@@ -1921,12 +1940,109 @@ function fetchGhinIndex(num) {
     url = 'https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&golfer_id=' + encodeURIComponent(num) + '&source=GHINcom';
     if (token) opts.headers.authorization = 'Bearer ' + token;
   }
-  return fetch(url, opts).then((r) => {
-    if (r.status === 401) throw new Error('token expired — grab a fresh one from ghin.com');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }).then((data) => { const idx = ghinIndexFrom(data); if (idx == null) throw new Error('no index in response'); return idx; });
+  return fetch(url, opts).then((r) => (r.ok ? r.json() : ghinFail(r)))
+    .then((data) => { const idx = ghinIndexFrom(data); if (idx == null) throw new Error('no index in response'); return idx; });
 }
+/* GHIN error text from a helper (JSON {error}) or GHIN itself, else the HTTP code. */
+function ghinFail(r) {
+  if (r.status === 401) return Promise.reject(new Error('token expired — grab a fresh one from ghin.com'));
+  return r.json().catch(() => ({})).then((d) => { throw new Error((d && d.error) || ('HTTP ' + r.status)); });
+}
+
+/* --- Find in GHIN by name (fills a player's GHIN # + Index, or adds a new
+ * player). Through the helper when GHIN_PROXY_URL is set, else straight to
+ * GHIN with this device's token. --- */
+const GHIN_STATE_KEY = 'ghin-state';
+function ghinState() { try { return localStorage.getItem(GHIN_STATE_KEY) || 'NC'; } catch (e) { return 'NC'; } }
+function fmtIndex(n) { return n == null ? '—' : (n < 0 ? '+' + Math.abs(n) : String(n)); } // plus handicaps stored negative
+function ghinGolfer(g) {
+  if (!g) return null;
+  if (g.first_name != null || g.last_name != null || g.handicap_index != null) { // raw GHIN shape
+    const raw = g.handicap_index ?? g.hi_value;
+    const n = raw == null || raw === '' ? null : (typeof raw === 'string' ? Number(raw.replace('+', '-')) : Number(raw));
+    return { ghin: String(g.ghin ?? g.ghin_number ?? g.golfer_id ?? g.id ?? ''), name: [g.first_name, g.last_name].filter(Boolean).join(' '), club: g.club_name || '', state: g.state || '', index: n == null || isNaN(n) ? null : n };
+  }
+  return { ghin: String(g.ghin || ''), name: g.name || '', club: g.club || '', state: g.state || '', index: g.index == null ? null : Number(g.index) }; // helper shape
+}
+function fetchGhinSearch(first, last, state) {
+  const token = getGhinToken();
+  const qs = 'last=' + encodeURIComponent(last) + (first ? '&first=' + encodeURIComponent(first) : '') + (state ? '&state=' + encodeURIComponent(state) : '');
+  let url; const opts = { headers: {} };
+  if (GHIN_PROXY_URL) {
+    url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + qs;
+    if (token) url += '&token=' + encodeURIComponent(token);
+  } else {
+    url = 'https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&source=GHINcom&last_name=' + encodeURIComponent(last) + (first ? '&first_name=' + encodeURIComponent(first) : '') + (state ? '&state=' + encodeURIComponent(state) : '');
+    if (token) opts.headers.authorization = 'Bearer ' + token;
+  }
+  return fetch(url, opts).then((r) => (r.ok ? r.json() : ghinFail(r))).then((data) => {
+    if (data && data.error) throw new Error(data.error);
+    const list = data && Array.isArray(data.golfers) ? data.golfers : (Array.isArray(data) ? data : []);
+    return list.map(ghinGolfer).filter((g) => g && g.ghin);
+  });
+}
+/* Search by first + last; nicknames (Jimbo, Dave) often miss, so with no hit
+ * retry on the last name alone and float same-initial first names to the top. */
+function runGhinFind() {
+  const f = ui.ghinFind; if (!f) return;
+  if (!f.last) { f.error = 'Type a last name.'; f.results = null; render(); return; }
+  if (!ghinReady()) return;
+  f.loading = true; f.error = ''; f.results = null; f.broadened = false; render();
+  const initial = (f.first || '').charAt(0).toLowerCase();
+  fetchGhinSearch(f.first, f.last, f.state)
+    .then((res) => (res.length || !f.first ? res : fetchGhinSearch('', f.last, f.state).then((all) => { f.broadened = true; return all; })))
+    .then((res) => {
+      if (ui.ghinFind !== f) return;
+      f.results = initial ? res.slice().sort((a, b) => (b.name.toLowerCase().startsWith(initial) ? 1 : 0) - (a.name.toLowerCase().startsWith(initial) ? 1 : 0)) : res;
+    })
+    .catch((e) => { if (ui.ghinFind === f) f.error = ghinErr(e); })
+    .then(() => { if (ui.ghinFind === f) { f.loading = false; render(); } });
+}
+function openGhinFind(pid) {
+  const p = pid ? player(pid) : null;
+  const parts = p ? String(p.name || '').trim().split(/\s+/) : [];
+  ui.ghinFind = { pid: p ? pid : null, first: parts.length > 1 ? parts[0] : '', last: parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || ''), state: ghinState(), results: null, added: {} };
+  ui.sheet = 'ghin';
+  if (ui.ghinFind.last) runGhinFind(); else render();
+}
+function ghinFindSheet() {
+  const f = ui.ghinFind || {};
+  const target = f.pid ? player(f.pid) : null;
+  const rows = (f.results || []).map((g, i) => `<div class="list-row" style="justify-content:space-between;gap:10px">
+      <div style="min-width:0"><b>${esc(g.name || '?')}</b><div class="muted" style="font-size:12px">${esc([g.club, g.state].filter(Boolean).join(' · '))}${g.club || g.state ? ' · ' : ''}GHIN ${esc(g.ghin)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0"><span class="num" style="font-weight:800">${esc(fmtIndex(g.index))}</span>
+      ${f.added && f.added[g.ghin] ? '<span class="ok-tag">Added ✓</span>' : `<button class="btn small" data-action="gf-pick" data-i="${i}">${target ? 'Use' : 'Add'}</button>`}</div>
+    </div>`).join('');
+  const status = f.loading ? '<div class="muted">Searching GHIN…</div>'
+    : f.error ? `<div class="tip">${esc(f.error)}</div>`
+    : f.results ? (f.results.length
+      ? (f.broadened ? `<div class="muted" style="font-size:12px;margin-bottom:6px">No exact match for “${esc(f.first)}”, so here is everyone named ${esc(f.last)}${f.state ? ' in ' + esc(f.state) : ''}.</div>` : '')
+      : '<div class="muted">No active golfers found. Try the last name only, or another state.</div>') : '';
+  return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
+    <h2>${target ? 'Find ' + esc(target.name) + ' in GHIN' : 'Add players from GHIN'}</h2>
+    <div class="grid3">
+      <div class="field"><label>First</label><input id="gf-first" value="${esc(f.first || '')}" autocomplete="off" placeholder="optional"></div>
+      <div class="field"><label>Last</label><input id="gf-last" value="${esc(f.last || '')}" autocomplete="off"></div>
+      <div class="field"><label>State</label><input id="gf-state" value="${esc(f.state || '')}" maxlength="2" autocomplete="off" placeholder="NC"></div>
+    </div>
+    <button class="btn" data-action="gf-search">Search GHIN</button>
+    <div style="margin:12px 0">${status}${rows}</div>
+    <button class="btn secondary" data-action="close-sheet">Done</button>
+  </div></div>`;
+}
+function ghinPick(i) {
+  const f = ui.ghinFind; const g = f && f.results && f.results[i];
+  if (!g) return;
+  if (f.pid) {
+    Store.update((s) => { const p = s.players[f.pid]; if (!p) return; p.ghin = g.ghin; if (g.index != null) p.index = g.index; });
+    ui.sheet = null; ui.ghinFind = null; render();
+    return;
+  }
+  // add a new player (sheet stays open so you can pull in the next one)
+  Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: g.name || 'New Player', index: g.index == null ? 0 : g.index, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '', ghin: g.ghin }; });
+  f.added[g.ghin] = true; render();
+}
+
 function ghinErr(e) {
   const m = e && e.message || String(e);
   if (/Failed to fetch|NetworkError|Load failed/i.test(m) && !GHIN_PROXY_URL) {
@@ -1936,6 +2052,7 @@ function ghinErr(e) {
 }
 function ghinReady() {
   if (getGhinToken() || GHIN_PROXY_URL) return true;
+  ui.sheet = null; ui.ghinFind = null; render();
   alert('Paste your GHIN token first — open the "GHIN auto-fill" box at the top of Players.');
   return false;
 }
