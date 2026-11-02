@@ -215,8 +215,12 @@ export function resolvePairingMatch(state, round, pairing) {
   }
   // A match called early (sunset) is decided over its last hole only: holes
   // after it don't count, and remaining strokes are measured against it.
+  // The round-wide sunset hole never re-decides a match that already finished
+  // over the full round; only a match's own setting can shorten it then.
   const bothFinished = holesBothFinished(netsA, netsB);
-  const lastHole = matchLastHole(round, pairing, holes.length);
+  let lastHole = matchLastHole(round, pairing, holes.length);
+  const ownSetting = round.lastHoles && round.lastHoles[pairing.id] != null && round.lastHoles[pairing.id] !== '';
+  if (!ownSetting && lastHole < holes.length && matchFromNets(netsA, netsB, holes.length).result !== 'IP') lastHole = holes.length;
   if (lastHole < holes.length) { netsA = netsA.slice(0, lastHole); netsB = netsB.slice(0, lastHole); }
   const m = matchFromNets(netsA, netsB, lastHole);
   return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB, lastHole, shortened: lastHole < holes.length, bothFinished };
@@ -303,6 +307,21 @@ export function resolveRound(state, round) {
     matches.push(res);
   });
 
+  // No matchups yet (e.g. Saturday's lineups get picked Friday night): count
+  // the points the round WILL put in play, from team size and players per
+  // side, so the target and "clinched" don't jump the gun.
+  let expected = false;
+  if (!(round.pairings || []).length) {
+    const per = Number(round.perSide) || (round.format === 'singles' ? 1 : 2);
+    const sizes = Object.keys(state.squads)
+      .map((sid) => Object.values(state.players).filter((p) => p.squadId === sid).length)
+      .filter((n) => n > 0);
+    const nMatches = sizes.length >= 2 ? Math.floor(Math.min(...sizes) / per) : 0;
+    const perMatch = system === 'holes' ? opts.holePoints * holeCount + opts.matchPoints : opts.win;
+    pointsAvailable = nMatches * perMatch;
+    expected = nMatches > 0;
+  }
+
   // explicit weighting
   const mode = state.tournament.weightMode || 'true';
   const target = state.tournament.normalizeTarget || 4;
@@ -320,7 +339,7 @@ export function resolveRound(state, round) {
     else status = matches.every((x) => x.m.result !== 'IP') && matches.length > 0 ? 'final' : 'live';
   }
 
-  return { roundId: round.id, format: round.format, matches, raw, contribution, pointsAvailable, status, mode, normalizeTarget: target, pointSystem: system, holePoints: opts.holePoints, matchPoints: opts.matchPoints };
+  return { roundId: round.id, format: round.format, matches, raw, contribution, pointsAvailable, expected, status, mode, normalizeTarget: target, pointSystem: system, holePoints: opts.holePoints, matchPoints: opts.matchPoints };
 }
 
 /* ---- full tournament standings ---- */

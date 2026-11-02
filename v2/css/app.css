@@ -351,3 +351,18 @@ input:focus, select:focus { outline: 2px solid var(--green); border-color: var(-
   .summary-doc .sum-sub2 { font-size: 10.5px; font-weight: 700; margin: 6px 0 2px; }
   .summary-doc table.sum-tbl td.tt-t { white-space: nowrap; font-weight: 700; width: 1in; }
 }
+
+/* --- Bogey-Man fixes (v66) --- */
+/* breakdown table: tighter cells so 5 columns + an UPCOMING chip fit 390px */
+.breakdown th, .breakdown td { padding-left: 5px; padding-right: 5px; }
+.breakdown .status { padding: 2px 6px; letter-spacing: .02em; }
+/* leader's points: readable green on the dark theme */
+:root[data-theme='dark'] .win { color: #5fd58c; }
+/* full card: holes after a match is over are not "missing" */
+.cardcell.bye { background: transparent; opacity: .45; }
+/* the other group's ball in a cross-group scramble: shown, not editable */
+.cardcell.ro { display: inline-block; color: var(--muted); }
+.player-score.ro { background: var(--surface); box-shadow: none; border-style: dashed; }
+.player-score.ro .top { margin-bottom: 4px; }
+/* clear one hole's score */
+.player-score .clr { border: none; background: transparent; color: var(--muted); font-size: 13px; padding: 2px 4px; margin-left: 2px; cursor: pointer; }

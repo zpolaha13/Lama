@@ -276,7 +276,21 @@ function actionCard(stand) {
   const me = meId() ? player(meId()) : null;
   // find my next/active match
   let lbl = 'Tournament', msg = '', cta = '';
-  const liveR = stand.rounds.find((r) => r.status === 'live');
+  // Cup decided: once every round is final, show the result instead of a
+  // stale "Up next"; while matches are still being played, keep the scoring
+  // card and add the clinch line on top.
+  const champ = stand.clinched && squad(stand.clinched) ? squad(stand.clinched) : null;
+  const other = champ ? Object.keys(stand.cup).find((x) => x !== stand.clinched) : null;
+  const champLine = champ ? `🏆 <b>${esc(champ.name)}</b> ${stand.rounds.every((r) => r.status === 'final') ? 'wins' : 'has clinched'} the Cup, ${ptsTxt(stand.cup[stand.clinched])} to ${ptsTxt(other ? stand.cup[other] : 0)}.` : '';
+  if (champ && stand.rounds.every((r) => r.status === 'final')) {
+    return `<div class="action"><div class="lbl">Final</div><div class="msg">${champLine}</div><button class="btn" data-action="tab" data-tab="standings">See the final standings</button></div>`;
+  }
+  // The round to point at: the LATEST live round (an earlier round with one
+  // forgotten hole shouldn't hijack everyone's Home), preferring one where my
+  // own match is still going; else the next round to start.
+  const live = stand.rounds.filter((r) => r.status === 'live');
+  const inMine = (rr) => me && rr.matches.some((x) => x.m.result === 'IP' && [...(x.pairing.teamA || []), ...(x.pairing.teamB || [])].includes(me.id));
+  const liveR = live.slice().reverse().find(inMine) || live[live.length - 1];
   const nextR = stand.rounds.find((r) => r.status === 'upcoming');
   if (me) {
     const target = liveR || nextR || stand.rounds[stand.rounds.length - 1];
@@ -313,6 +327,7 @@ function actionCard(stand) {
     cta = `<button class="btn" data-action="tab" data-tab="mycard">Pick my player</button>`;
   }
   if (!msg) { msg = 'Follow the live standings and round leaderboards.'; cta = `<button class="btn" data-action="tab" data-tab="standings">View standings</button>`; }
+  if (champLine) msg = champLine + '<br>' + msg;
   return `<div class="action"><div class="lbl">${lbl}</div><div class="msg">${msg}</div>${cta}</div>`;
 }
 
@@ -346,9 +361,27 @@ function weightToggle(stand) {
   return `<div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div><div style="font-weight:700;font-size:14px">Scoring: ${mode === 'normalized' ? 'Equal-weight rounds' : 'True points'}</div>
     <div class="muted" style="font-size:12px">${detail}</div></div>
-    <button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>
+    ${setupUnlocked() ? `<button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>` : ''}
   </div>`;
 }
+
+/* Has anything been scored yet? Used to warn before edits that would
+ * re-score or orphan scores already in. */
+function roundScored(r) {
+  if (!r) return false;
+  const has = (o) => o && Object.values(o).some((v) => (v != null && typeof v === 'object' ? has(v) : v != null));
+  return has(r.scores) || has(r.teamScores);
+}
+function matchScored(r, p) {
+  if (!r || !p) return false;
+  const ids = [...(p.teamA || []), ...(p.teamB || [])];
+  const has = (o) => o && Object.values(o).some((v) => (v != null && typeof v === 'object' ? has(v) : v != null));
+  return ids.some((pid) => has(r.scores && r.scores[pid])) || has(r.teamScores && r.teamScores[p.id]);
+}
+function playerScored(pid) {
+  return roundIds().some((id) => { const r = round(id); return (r.pairings || []).some((p) => [...(p.teamA || []), ...(p.teamB || [])].includes(pid) && matchScored(r, p)); });
+}
+function anyScored() { return roundIds().some((id) => roundScored(round(id))); }
 
 function breakdownCard(stand, full) {
   const ids = squadIds();
@@ -641,38 +674,39 @@ function viewScore() {
   ui.holeIdx = h;
   const hole = c.holes[h];
 
-  const pairingOpts = pairings.map((p, i) => `<option value="${p.id}" ${p.id === ui.scorePairingId ? 'selected' : ''}>${matchupLabel(p, i)}</option>`).join('');
+  // Singles: a group of 4 plays two matches, so by default the scorer gets the
+  // whole group on one screen instead of flipping the Matchup menu every hole.
+  const groups = scoreGroups(r);
+  const canGroup = r.format === 'singles' && groups.some((g) => g.length > 1);
+  const groupMode = canGroup && !ui.scoreOneMatch;
+  const group = groupMode ? (groups.find((g) => g.some((p) => p.id === ui.scorePairingId)) || groups[0]) : [pairing];
+  const pairingOpts = groupMode
+    ? groups.map((g, i) => `<option value="${g[0].id}" ${g === group ? 'selected' : ''}>Group ${i + 1}: ${g.map((p) => matchupShort(p)).join(' · ')}</option>`).join('')
+    : pairings.map((p, i) => `<option value="${p.id}" ${p.id === ui.scorePairingId ? 'selected' : ''}>${matchupLabel(p, i)}</option>`).join('');
 
   // live match status
   const res = resolvePairingMatch(S(), r, pairing);
   const sa = squad(res.squadA), sb = squad(res.squadB);
   const statusTxt = Eng.matchText(res.m, sa ? sa.name : 'A', sb ? sb.name : 'B');
 
-  let units;
-  if (isTeamBall(r.format)) {
-    units = ['A', 'B'].map((side) => {
-      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
-      const sid = side === 'A' ? res.squadA : res.squadB;
-      const ch = side === 'A' ? res.chA : res.chB;
-      const val = getTeam(r, pairing.id, side, h);
-      return unitRow({ rid: r.id, target: `team:${pairing.id}:${side}`, name: (squad(sid) ? squad(sid).name : side) + ' — ' + ids.map((x) => player(x) ? player(x).name : '?').join(' / '), sdotId: sid, ch, val, hole, holes: c.holes.length });
-    }).join('');
-  } else {
-    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
-    const hc = matchHandicaps(S(), r, pairing);
-    units = ids.map((pid) => {
-      const p = player(pid);
-      const ch = hc.byPlayer[pid] || 0;
-      const val = getScore(r, pid, h);
-      return unitRow({ rid: r.id, target: `player:${pid}`, name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch, val, hole, holes: c.holes.length, tee: p ? teeNameFor(p, r) : '' });
-    }).join('');
-  }
+  const unitList = scoreUnits(r, c, group);
+  const units = unitList.map((u) => (u.readOnly
+    ? readOnlyUnitRow(u, h, c.holes.length)
+    : unitRow({ rid: r.id, target: u.target, name: u.name, sdotId: u.sdotId, ch: u.ch, val: u.get(h), hole, holes: c.holes.length, tee: u.tee }))).join('');
 
   // count missing scores so we can warn that the round can't complete
-  const missing = countMissing(r, pairing, c);
-  const finalLine = res.m.result === 'IP'
-    ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : esc(statusTxt))
-    : '<b>✓ ' + esc(statusTxt) + ' — complete</b>';
+  // (only holes the match still needs, and only rows this phone scores)
+  const missing = countMissing(unitList);
+  const allDone = group.every((p) => resolvePairingMatch(S(), r, p).m.result !== 'IP');
+  const finalLine = groupMode
+    ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : (allDone ? '<b>✓ Both matches complete</b>' : 'All scores in so far'))
+    : res.m.result === 'IP'
+      ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : esc(statusTxt))
+      : '<b>✓ ' + esc(statusTxt) + ' — complete</b>';
+  const groupToggle = canGroup
+    ? `<div style="margin:-2px 0 8px"><button class="btn ghost small" data-action="score-one-match">${groupMode ? 'Score just one match' : 'Score the whole group (both matches)'}</button></div>`
+    : '';
+  const banners = group.map((p) => liveMatchBanner(r, p.id === pairing.id ? res : resolvePairingMatch(S(), r, p))).join('');
 
   const modeSeg = `<div class="seg" style="margin:0 0 12px">
     <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
@@ -681,13 +715,14 @@ function viewScore() {
 
   const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>
     <div class="card">
-      <div class="field" style="margin-bottom:8px"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
-      ${liveMatchBanner(r, res)}
-      ${lastHoleControl(r, pairing, res, c.holes.length)}
+      <div class="field" style="margin-bottom:8px"><label>${groupMode ? 'Group' : 'Matchup'}</label><select data-action="pick-pairing">${pairingOpts}</select></div>
+      ${groupToggle}
+      ${banners}
+      ${groupMode ? '' : lastHoleControl(r, pairing, res, c.holes.length)}
       ${modeSeg}`;
 
   if (ui.scoreMode === 'card') {
-    return head + scoreCard(r, pairing, c) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
+    return head + cardTable(r, c.holes, unitList) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
       <div class="muted" style="font-size:12px;margin-top:8px">Tap any cell to type a score. ${missing > 0 ? 'Highlighted cells are blank — fill them to finish the round.' : 'All holes in — round result is final.'}</div>
     </div>`;
   }
@@ -723,42 +758,87 @@ function lastHoleControl(r, pairing, res, full) {
   return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} style="margin:0 0 12px"><summary class="muted" style="cursor:pointer;font-size:13px">Losing the light? Shorten this match</summary>${body}</details>`;
 }
 
-/* count holes with a missing score across the pairing (so the user can find gaps).
- * Holes after a shortened match's last hole don't count as missing. */
-function countMissing(r, pairing, c) {
-  const n = matchLastHole(r, pairing, c.holes.length);
+/* count holes with a missing score on the rows this phone scores (so the user
+ * can find gaps). Holes after a match is over (closed out, or past a sunset
+ * last hole) don't count: nobody needs to post them. */
+function countMissing(units) {
   let miss = 0;
-  if (isTeamBall(r.format)) {
-    for (let h = 0; h < n; h++) { if (getTeam(r, pairing.id, 'A', h) == null) miss++; if (getTeam(r, pairing.id, 'B', h) == null) miss++; }
-  } else {
-    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
-    for (let h = 0; h < n; h++) ids.forEach((pid) => { if (getScore(r, pid, h) == null) miss++; });
-  }
+  units.forEach((u) => { if (u.readOnly) return; for (let h = 0; h < u.endAt; h++) if (u.get(h) == null) miss++; });
   return miss;
 }
 
-/* full 18-hole editable scorecard for the selected matchup */
-function scoreCard(r, pairing, c) {
-  const holes = c.holes;
-  let units;
-  if (isTeamBall(r.format)) {
-    const res = resolvePairingMatch(S(), r, pairing);
-    units = ['A', 'B'].map((side) => {
-      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
-      const sid = side === 'A' ? res.squadA : res.squadB;
-      return { name: (squad(sid) ? squad(sid).name : side), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h) };
+/* Singles groups: which matches share a tee time, so one scorer can enter the
+ * whole group. From tee times when set, otherwise matches are taken in pairs
+ * as listed (1+2, 3+4, …). Other formats: one match per screen. */
+function scoreGroups(r) {
+  const ps = r.pairings || [];
+  if (r.format !== 'singles') return ps.map((p) => [p]);
+  const tts = (r.teeTimes || []).filter((t) => (t.players || []).length);
+  if (tts.length) {
+    const used = new Set(); const out = [];
+    tts.forEach((t) => {
+      const g = ps.filter((p) => !used.has(p.id) && [...(p.teamA || []), ...(p.teamB || [])].every((pid) => t.players.includes(pid)));
+      g.forEach((p) => used.add(p.id));
+      if (g.length) out.push(g);
     });
-  } else {
-    const hc = matchHandicaps(S(), r, pairing);
-    units = [...(pairing.teamA || []), ...(pairing.teamB || [])].map((pid) => {
-      const p = player(pid);
-      return { name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h) };
-    });
+    ps.forEach((p) => { if (!used.has(p.id)) out.push([p]); });
+    return out;
   }
-  return cardTable(r, holes, units);
+  const out = [];
+  for (let i = 0; i < ps.length; i += 2) out.push(ps.slice(i, i + 2));
+  return out;
+}
+function matchupShort(p) {
+  const nm = (ids) => (ids || []).map((x) => (player(x) ? player(x).name : '?')).join('/');
+  return nm(p.teamA) + ' v ' + nm(p.teamB);
 }
 
-/* shared full-card table builder: units = [{name, sdotId, ch, target, get(h)}] */
+/* The score rows for one screen: each player (per-player formats) or one team
+ * ball per side. A 4-man scramble's sides play in DIFFERENT groups, so when
+ * this phone's player is on one side, the other side is read-only (a stray tap
+ * would overwrite the other group's real score). endAt = holes the match
+ * still needs (closeout or sunset), for missing-score counts and highlights. */
+function scoreUnits(r, c, pairings) {
+  const me = meId();
+  const names = (ids) => (ids || []).map((x) => (player(x) ? player(x).name : '?')).join(' / ');
+  const units = [];
+  pairings.forEach((pairing) => {
+    const res = resolvePairingMatch(S(), r, pairing);
+    const endAt = res.m.decidedAt || res.lastHole || c.holes.length;
+    if (isTeamBall(r.format)) {
+      const cross = (pairing.teamA || []).length + (pairing.teamB || []).length > 4;
+      const mySide = me && (pairing.teamA || []).includes(me) ? 'A' : (me && (pairing.teamB || []).includes(me) ? 'B' : null);
+      const onlyMine = !!(cross && mySide && !ui.scoreBothSides);
+      (mySide === 'B' ? ['B', 'A'] : ['A', 'B']).forEach((side) => {
+        const ids = side === 'A' ? pairing.teamA : pairing.teamB;
+        const sid = side === 'A' ? res.squadA : res.squadB;
+        units.push({ readOnly: onlyMine && side !== mySide, name: (squad(sid) ? squad(sid).name : side) + ' — ' + names(ids), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h), endAt });
+      });
+    } else {
+      const hc = matchHandicaps(S(), r, pairing);
+      [...(pairing.teamA || []), ...(pairing.teamB || [])].forEach((pid) => {
+        const p = player(pid);
+        units.push({ name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h), endAt, tee: p ? teeNameFor(p, r) : '' });
+      });
+    }
+  });
+  return units;
+}
+
+/* the other group's ball in a cross-group match: shown, not editable here */
+function readOnlyUnitRow(u, h, holes) {
+  let thru = 0;
+  for (let i = 0; i < holes; i++) if (u.get(i) != null) thru = i + 1;
+  const v = u.get(h);
+  return `<div class="player-score ro">
+    <div class="top"><div class="who">${sdot(u.sdotId)} ${esc(u.name)}</div><div class="net num">${v != null ? 'scored ' + v + ' · ' : ''}${thru ? 'thru ' + thru : 'not started'}</div></div>
+    <div class="muted" style="font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">Their own group's scorer enters this ball. <button class="btn ghost small" data-action="score-both-sides">Enter it here too</button></div>
+  </div>`;
+}
+
+/* shared full-card table builder: units = [{name, sdotId, ch, target, get(h),
+ * endAt?, readOnly?}]. Holes past a unit's endAt (match over) aren't flagged
+ * as missing; read-only units (the other group's ball) show text, not inputs. */
 function cardTable(r, holes, units) {
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
@@ -776,7 +856,11 @@ function cardTable(r, holes, units) {
         const strokes = Eng.strokesOnHole(u.ch, holes[i].si, holes.length);
         const has = v != null && v !== '' && !isNaN(v);
         if (has) { tot += Number(v); any = true; }
-        row += `<td class="cardtd"><input class="cardcell ${has ? '' : 'miss'}" type="number" inputmode="numeric" value="${has ? v : ''}" data-action="card-score" data-rid="${r.id}" data-target="${u.target}" data-h="${i}">${strokes > 0 ? `<span class="cdots">${'•'.repeat(strokes)}</span>` : ''}</td>`;
+        const done = u.endAt != null && i >= u.endAt; // match already over
+        const dots = strokes > 0 ? `<span class="cdots">${'•'.repeat(strokes)}</span>` : '';
+        row += u.readOnly
+          ? `<td class="cardtd"><span class="cardcell ro">${has ? v : ''}</span>${dots}</td>`
+          : `<td class="cardtd"><input class="cardcell ${has ? '' : (done ? 'bye' : 'miss')}" type="number" inputmode="numeric" min="1" max="15" value="${has ? v : ''}" data-action="card-score" data-rid="${r.id}" data-target="${u.target}" data-h="${i}">${dots}</td>`;
       }
       row += `<td class="num"><b>${any ? tot : ''}</b></td></tr>`;
       rows += row;
@@ -942,7 +1026,7 @@ function unitRow({ rid, target, name, sdotId, ch, val, hole, holes, tee }) {
   return `<div class="player-score">
     <div class="top">
       <div class="who">${sdot(sdotId)} ${esc(name)} ${dots}</div>
-      <div class="net num">${tee ? esc(tee) + ' · ' : ''}CH ${ch}${net != null ? ` · net ${net}` : ''}</div>
+      <div class="net num">${tee ? esc(tee) + ' · ' : ''}${ch > 0 ? 'gets ' + ch : (ch < 0 ? 'gives ' + (-ch) : 'no strokes')}${net != null ? ` · net ${net}` : ''}${val != null ? ` <button class="clr" data-action="clear-score" data-rid="${rid}" data-target="${target}" aria-label="Clear this score" title="Clear this score">✕</button>` : ''}</div>
     </div>
     <div class="stepper">
       <button class="minus" data-action="step" data-rid="${rid}" data-target="${target}" data-h="${hole._i ?? ''}" data-dir="-1">−</button>
@@ -1646,7 +1730,11 @@ app.addEventListener('click', (e) => {
     tab: () => { ui.view = t.dataset.tab; ui.scope = ui.view === 'standings' ? 'overall' : ui.scope; render(); },
     'open-round': () => { ui.scope = t.dataset.id; ui.view = 'round'; render(); },
     back: () => { ui.view = ui.view === 'score' ? 'round' : 'rounds'; render(); },
-    'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
+    'score-one-match': () => { ui.scoreOneMatch = !ui.scoreOneMatch; render(); },
+    'score-both-sides': () => { ui.scoreBothSides = true; render(); },
+    'clear-score': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, ui.holeIdx, null); }),
+    // ui.scope = the round being scored, so "← back" lands on THAT round's page
+    'enter-scores': () => { ui.scope = t.dataset.rid; ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
     scope: () => { ui.scope = t.dataset.scope; render(); },
     'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
     'sort-players': () => { const k = t.dataset.key; if (ui.playerSort.key === k) ui.playerSort.dir *= -1; else ui.playerSort = { key: k, dir: 1 }; render(); },
@@ -1657,7 +1745,12 @@ app.addEventListener('click', (e) => {
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
     'load-sample': () => { Store.importJSON(JSON.stringify(sampleTournament())); ui.view = 'home'; render(); },
-    'weight-mode': () => Store.update((s) => { s.tournament.weightMode = s.tournament.weightMode === 'normalized' ? 'true' : 'normalized'; }),
+    'weight-mode': () => {
+      if (!setupUnlocked()) return;
+      const toEqual = S().tournament.weightMode !== 'normalized';
+      if (!confirm(toEqual ? 'Switch the Cup to equal-weight rounds for everyone? Every round would count the same, which changes the score and the target.' : 'Switch the Cup back to true points for everyone?')) return;
+      Store.update((s) => { s.tournament.weightMode = toEqual ? 'normalized' : 'true'; });
+    },
     'set-weight': () => { Store.update((s) => { s.tournament.weightMode = t.value; }); try { e.target.blur(); } catch (err) {} render(); },
     sheet: () => { ui.sheet = t.dataset.sheet; render(); },
     // a tap inside a sheet bubbles up to the backdrop's close action: ignore that,
@@ -1693,7 +1786,11 @@ app.addEventListener('click', (e) => {
     },
     'call-round': () => callRound(t.dataset.rid),
     'add-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = r.pairings || []; r.pairings.push({ id: Store.uid('m'), teamA: [], teamB: [] }); }),
-    'del-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); }),
+    'del-match': () => {
+      const r0 = round(t.dataset.rid); const p0 = r0 && (r0.pairings || []).find((p) => p.id === t.dataset.mid);
+      if (matchScored(r0, p0) && !confirm('This match already has scores. Remove it? Its scores will stop counting toward the Cup.')) return;
+      Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); });
+    },
     mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
     'add-squad': () => Store.update((s) => { const id = Store.uid('sq'); const cols = ['#1B7A3D', '#D0021B', '#1B6FB3', '#F5A623', '#7c3aed', '#0891b2']; s.squads[id] = { name: 'Team ' + (Object.keys(s.squads).length + 1), color: cols[Object.keys(s.squads).length % cols.length] }; }),
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
@@ -1726,7 +1823,9 @@ app.addEventListener('change', (e) => {
     'pick-pairing': () => { ui.scorePairingId = v; ui.lastPairing[ui.scoreRoundId] = v; render(); },
     'card-score': () => {
       const h = Number(t.dataset.h);
-      Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, v === '' ? null : parseInt(v, 10)); });
+      const n = v === '' ? null : parseInt(v, 10);
+      if (n != null && (isNaN(n) || n < 1 || n > 15)) { alert('A hole score has to be between 1 and 15.'); render(); return; }
+      Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, n); });
     },
     'pick-me': () => Store.setMe(v || null),
     'toggle-import-new': () => { ui.importAsNew = !!e.target.checked; render(); },
@@ -1738,7 +1837,12 @@ app.addEventListener('change', (e) => {
     'squad-name': () => Store.update((s) => { s.squads[t.dataset.id].name = v; }),
     'squad-color': () => Store.update((s) => { s.squads[t.dataset.id].color = v; }),
     'player-name': () => Store.update((s) => { s.players[t.dataset.id].name = v; }),
-    'player-index': () => Store.update((s) => { s.players[t.dataset.id].index = v === '' ? 0 : parseFloat(v); }),
+    'player-index': () => {
+      const pid = t.dataset.id; const nv = v === '' ? 0 : parseFloat(v);
+      const p = player(pid);
+      if (p && Number(p.index) !== nv && playerScored(pid) && !confirm(`${p.name} already has scores in. Changing the index re-scores those matches, finished ones included. Change it?`)) { render(); return; }
+      Store.update((s) => { s.players[pid].index = nv; });
+    },
     'player-ghin': () => Store.update((s) => { s.players[t.dataset.id].ghin = String(v || '').replace(/[^0-9]/g, ''); }),
     'ghin-token': () => { setGhinTokenVal(String(v || '').replace(/^\s*bearer\s+/i, '').replace(/['"]/g, '').trim()); render(); },
     'player-squad': () => Store.update((s) => { s.players[t.dataset.id].squadId = v; }),
@@ -1872,6 +1976,7 @@ function teamScramCH(r, sid) {
 }
 
 function autoPair(rid) {
+  if (roundScored(round(rid)) && !confirm('This round already has scores. Auto-pair replaces every matchup, and the scores already entered will stop counting. Continue?')) return;
   Store.update((s) => {
     const r = s.rounds[rid];
     const ids = squadIds();
@@ -2034,6 +2139,8 @@ function ghinPick(i) {
   const f = ui.ghinFind; const g = f && f.results && f.results[i];
   if (!g) return;
   if (f.pid) {
+    const cur = player(f.pid);
+    if (cur && g.index != null && Number(cur.index) !== g.index && playerScored(f.pid) && !confirm(`${cur.name} already has scores in. Using this GHIN index re-scores those matches. Use it anyway?`)) return;
     Store.update((s) => { const p = s.players[f.pid]; if (!p) return; p.ghin = g.ghin; if (g.index != null) p.index = g.index; });
     ui.sheet = null; ui.ghinFind = null; render();
     return;
@@ -2060,6 +2167,7 @@ function ghinRefresh(id) {
   const p = player(id); if (!p) return;
   const num = String(p.ghin || '').replace(/[^0-9]/g, '');
   if (!num) { alert('Enter a GHIN number for this player first.'); return; }
+  if (playerScored(id) && !confirm(`${p.name} already has scores in. A new index from GHIN re-scores those matches, finished ones included. Refresh anyway?`)) return;
   if (!ghinReady()) return;
   ui.ghinLoading = ui.ghinLoading || {}; ui.ghinLoading[id] = true; render();
   const done = () => { delete ui.ghinLoading[id]; render(); };
@@ -2071,6 +2179,7 @@ function ghinRefresh(id) {
 function ghinRefreshAll() {
   const ids = Object.keys(S().players).filter((id) => String(S().players[id].ghin || '').replace(/\D/g, ''));
   if (!ids.length) { alert('No players have a GHIN number yet.'); return; }
+  if (anyScored() && !confirm('Scores are already in. GHIN updates indexes every day, so refreshing now can re-score matches that are finished. Refresh all anyway?')) return;
   if (!ghinReady()) return;
   ui.ghinLoading = ui.ghinLoading || {}; ids.forEach((id) => { ui.ghinLoading[id] = true; }); render();
   const errs = [];
