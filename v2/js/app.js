@@ -7,7 +7,7 @@
 import * as Store from './store.js';
 import { isFirebaseConfigured, GHIN_PROXY_URL } from './config.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound, isTeamBall, matchLastHole } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
@@ -25,6 +25,25 @@ const course = (id) => S().courses[id];
 const roundIds = () => (S().tournament.roundOrder || []).filter((id) => S().rounds[id]);
 const squadIds = () => Object.keys(S().squads);
 const fmtInfo = (f) => FORMAT_INFO[f] || { label: f, short: '', explainer: '' };
+/* "1v1" / "2v2" / "4v4" from the round's actual matchups (a 4-man scramble
+ * isn't "2v2"); falls back to the format's default. */
+function shortLabel(r) {
+  if (!r) return '';
+  const p = r.format !== 'teamscramble' ? (r.pairings || []).find((x) => (x.teamA || []).length && (x.teamB || []).length) : null;
+  return p ? p.teamA.length + 'v' + p.teamB.length : fmtInfo(r.format).short;
+}
+/* "first to 15.5", or a plain note before any matchups exist (otherwise a
+ * fresh tournament would read "first to 0.5"). */
+function targetLine(stand) {
+  return stand.totalAvailable > 0 ? 'first to ' + stand.target : 'matchups not set yet';
+}
+/* Match points as golfers write them: 2, 1½, ½. */
+function ptsTxt(n) {
+  const x = Math.round((Number(n) || 0) * 100) / 100;
+  if (Number.isInteger(x)) return String(x);
+  if (Math.abs(x * 2 - Math.round(x * 2)) < 1e-9) return (Math.floor(x) || '') + '½';
+  return String(x);
+}
 function fmtToPar(n) { return n === 0 ? 'E' : n > 0 ? '+' + n : String(n); }
 function toParClass(n) { return n < 0 ? 'under' : n === 0 ? 'even' : 'over'; }
 function meId() { const m = Store.getMe(); return m && S().players[m] ? m : null; }
@@ -177,7 +196,7 @@ function hero() {
   const a = ids[0], b = ids[1];
   const sa = squad(a), sb = squad(b);
   const clinchBadge = stand.clinched ? `<div class="center"><span class="clinch">🏆 ${esc(squad(stand.clinched).name)} clinched</span></div>` : '';
-  const center = `<div class="cup-mid"><div class="hero-name">${nameTap}</div><div class="target num">first to ${stand.target}</div></div>`;
+  const center = `<div class="cup-mid"><div class="hero-name">${nameTap}</div><div class="target num">${targetLine(stand)}</div></div>`;
   const two = b
     ? `<div class="cup">
         <div class="cup-side"><div class="pts num">${stand.cup[a] ?? 0}</div><div class="nm">${sdot(a)}${esc(sa.name)}</div></div>
@@ -279,7 +298,7 @@ function actionCard(stand) {
         const partnerIds = (onA ? tA : tB).filter((x) => x !== me.id);
         const names = (ids) => ids.map((x) => esc(player(x) ? player(x).name : '?')).join(' & ');
         lbl = target.status === 'live' ? 'Live now' : 'Up next';
-        msg = `${esc(r.name)} — ${fmtInfo(r.format).short}` + (partnerIds.length ? `<br>You + ${names(partnerIds)} vs ${names(oppIds)}` : `<br>You vs ${names(oppIds)}`);
+        msg = `${esc(r.name)} — ${shortLabel(r)}` + (partnerIds.length ? `<br>You + ${names(partnerIds)} vs ${names(oppIds)}` : `<br>You vs ${names(oppIds)}`);
         cta = `<button class="btn" data-action="enter-scores" data-rid="${r.id}" data-pid="${myPairing.id}">Enter scores</button>`;
       }
       }
@@ -322,8 +341,8 @@ function weightToggle(stand) {
   const mode = S().tournament.weightMode || 'true';
   const perRound = stand.rounds.map((r, i) => `R${i + 1} ${r.pointsAvailable}`).join(' · ');
   const detail = mode === 'normalized'
-    ? `Each round worth ${S().tournament.normalizeTarget} · first to ${stand.target}`
-    : `${perRound} pts · first to ${stand.target}`;
+    ? `Each round worth ${S().tournament.normalizeTarget} · ${targetLine(stand)}`
+    : `${perRound} pts · ${targetLine(stand)}`;
   return `<div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div><div style="font-weight:700;font-size:14px">Scoring: ${mode === 'normalized' ? 'Equal-weight rounds' : 'True points'}</div>
     <div class="muted" style="font-size:12px">${detail}</div></div>
@@ -341,7 +360,7 @@ function breakdownCard(stand, full) {
       return `<td class="c"><span class="pts num ${lead ? 'win' : ''}">${r.status === 'upcoming' ? '—' : v}</span></td>`;
     }).join('');
     return `<tr data-action="open-round" data-id="${r.roundId}">
-      <td><b>${esc(ro.name.replace(/^Round \d+ — /, 'R' + (roundIds().indexOf(r.roundId) + 1) + ' '))}</b><div class="muted" style="font-size:12px">${fmtInfo(ro.format).short} · ${fmtInfo(ro.format).label}</div></td>
+      <td><b>${esc(ro.name.replace(/^Round \d+ — /, 'R' + (roundIds().indexOf(r.roundId) + 1) + ' '))}</b><div class="muted" style="font-size:12px">${shortLabel(ro)} · ${fmtInfo(ro.format).label}</div></td>
       <td class="c"><span class="chip">${r.availableWeighted != null ? r.availableWeighted : r.pointsAvailable}</span></td>
       ${cells}
       <td class="r"><span class="status ${r.status}">${r.status === 'live' ? 'Live' : r.status}</span></td>
@@ -352,7 +371,7 @@ function breakdownCard(stand, full) {
     ${full ? '' : '<h2>Tournament breakdown</h2>'}
     <table><thead><tr><th>Round</th><th class="c">Pts</th>${head}<th class="r">Status</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div class="muted" style="font-size:12px;margin-top:8px">Tap a round to see its live leaderboard. First to ${stand.target} wins the Tournament.</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Tap a round to see its live leaderboard. ${stand.totalAvailable > 0 ? 'First to ' + stand.target + ' wins the Tournament.' : 'The winning target shows once matchups are set.'}</div>
   </div>`;
 }
 
@@ -485,7 +504,12 @@ function roundPlayersCH(r) {
 /* label for a round's handicap setting, e.g. "Full handicap", "80% off the low" */
 function hcpLabel(r) {
   const { allowance, mode } = ruleHandicap(r);
-  if (r.format === 'scramble') return 'Team handicap (35/15)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
+  if (r.format === 'scramble') {
+    const p = (r.pairings || []).find((x) => (x.teamA || []).length);
+    const split = { 1: 'own handicap', 3: '30/20/10', 4: '25/20/15/10' }[p ? p.teamA.length : 2] || '35/15';
+    return 'Team handicap (' + split + ')' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
+  }
+  if (r.format === 'foursomes') return 'Team handicap (50% of combined)' + (allowance !== 100 ? ' @ ' + allowance + '%' : '') + (mode === 'relative' ? ', off the low side' : '');
   if (r.format === 'teamscramble') return 'Team handicap 25/20/15/10, off the low team' + (allowance !== 100 ? ' @ ' + allowance + '%' : '');
   const pct = allowance === 100 ? 'Full' : allowance + '%';
   return pct + (mode === 'relative' ? ' off the low' : ' handicap');
@@ -503,8 +527,8 @@ function computeRoundSkins(r) {
 }
 
 function skinsCard(r) {
-  if (r.format === 'scramble' || r.format === 'teamscramble') {
-    return `<div class="card"><h2>Skins</h2><div class="muted">Skins don't apply to a scramble (one team ball per hole).</div></div>`;
+  if (isTeamBall(r.format) || r.format === 'teamscramble') {
+    return `<div class="card"><h2>Skins</h2><div class="muted">Skins don't apply to ${r.format === 'foursomes' ? 'alternate shot' : 'a scramble'} (one team ball per hole).</div></div>`;
   }
   const cfg = skinsCfg(r.id);
   const sel = (cur, val, label) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
@@ -549,7 +573,7 @@ function tripMoney() {
   const money = {};
   roundIds().forEach((id) => {
     const r = round(id);
-    if (r.format === 'scramble' || r.format === 'teamscramble' || !skinsCfg(id).enabled) return;
+    if (isTeamBall(r.format) || r.format === 'teamscramble' || !skinsCfg(id).enabled) return;
     const { pay } = computeRoundSkins(r);
     Object.keys(pay.payouts).forEach((pid) => { money[pid] = (money[pid] || 0) + pay.payouts[pid]; });
   });
@@ -568,16 +592,15 @@ function matchList(rr) {
     if (rr.pointSystem === 'holes' && res.pts) {
       const fmt = (n) => Math.round(n * 100) / 100;
       pt = `${fmt(res.pts.a)} – ${fmt(res.pts.b)}`;
-    } else if (res.m.result === 'A') pt = '1 – 0';
-    else if (res.m.result === 'B') pt = '0 – 1';
-    else if (res.m.result === 'AS') pt = '½ – ½';
+    } else if (res.m.result !== 'IP' && res.pts) pt = `${ptsTxt(res.pts.a)} – ${ptsTxt(res.pts.b)}`; // e.g. 2 – 0, 1½ – 1½
     else pt = res.m.played ? 'in play' : '';
+    const short = res.shortened ? `<div class="muted" style="font-size:11px">${res.lastHole}-hole match</div>` : '';
     return `<div class="match">
       <div class="sides">
         <div class="side ${bUp ? 'dim' : ''}">${sdot(res.squadA)} ${names(res.pairing.teamA)}</div>
         <div class="side ${aUp ? 'dim' : ''}">${sdot(res.squadB)} ${names(res.pairing.teamB)}</div>
       </div>
-      <div><div class="tag">${esc(tag)}</div><div class="pt num">${pt}</div></div>
+      <div><div class="tag">${esc(tag)}</div><div class="pt num">${pt}</div>${short}</div>
     </div>`;
   }).join('');
 }
@@ -595,6 +618,7 @@ function liveMatchBanner(r, res) {
   else if (m.result === 'A' || m.result === 'B') { big = Eng.matchTag(m, sa ? sa.name : 'A', sb ? sb.name : 'B'); sub = 'final'; }
   else if (m.status === 0) { big = 'All square'; sub = 'thru ' + m.played; }
   else { const L = aUp ? sa : sb; big = (L ? L.name : (aUp ? 'A' : 'B')) + ' ' + Math.abs(m.status) + ' UP'; sub = 'thru ' + m.played; }
+  if (res.shortened) sub += ' · ends after ' + res.lastHole;
   return `<div class="livematch">
     <div class="lm-side ${aUp ? 'lead' : bUp ? 'dim' : ''}">${sdot(res.squadA)}<span>${nm(res.pairing.teamA)}</span></div>
     <div class="lm-mid"><div class="lm-big">${esc(big)}</div><div class="lm-sub">${esc(sub)}</div></div>
@@ -625,7 +649,7 @@ function viewScore() {
   const statusTxt = Eng.matchText(res.m, sa ? sa.name : 'A', sb ? sb.name : 'B');
 
   let units;
-  if (r.format === 'scramble') {
+  if (isTeamBall(r.format)) {
     units = ['A', 'B'].map((side) => {
       const ids = side === 'A' ? pairing.teamA : pairing.teamB;
       const sid = side === 'A' ? res.squadA : res.squadB;
@@ -659,6 +683,7 @@ function viewScore() {
     <div class="card">
       <div class="field" style="margin-bottom:8px"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
       ${liveMatchBanner(r, res)}
+      ${lastHoleControl(r, pairing, res, c.holes.length)}
       ${modeSeg}`;
 
   if (ui.scoreMode === 'card') {
@@ -679,11 +704,31 @@ function viewScore() {
     </div>`;
 }
 
-/* count holes with a missing score across the pairing (so the user can find gaps) */
+/* Sunset control for one match: pick the last hole the group agreed on, or
+ * end it at the fewest holes both sides have finished (the sheet's rule for a
+ * match played across two groups). Tucked away until a match is shortened. */
+function lastHoleControl(r, pairing, res, full) {
+  // a match already decided over the full round has nothing to shorten (and
+  // changing it could re-decide a finished match)
+  if (!res.shortened && res.m.result !== 'IP') return '';
+  const cur = res.lastHole || full;
+  let opts = '';
+  for (let n = full; n >= 1; n--) opts += `<option value="${n}" ${cur === n ? 'selected' : ''}>${n === full ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
+  const canCall = res.m.result === 'IP' && res.bothFinished >= 1 && res.bothFinished < cur;
+  const body = `<div class="field" style="margin:8px 0 4px"><label>Match ends after</label><select data-action="match-lasthole" data-rid="${r.id}" data-pid="${pairing.id}">${opts}</select></div>
+    ${canCall ? `<button class="btn secondary small" data-action="call-match" data-rid="${r.id}" data-pid="${pairing.id}" data-n="${res.bothFinished}">End it after hole ${res.bothFinished} (last hole both sides finished)</button>` : ''}
+    <div class="muted" style="font-size:12px;margin-top:6px">Losing the light? Set the last hole your group agreed on. Holes after it don't count, and a tie after it is a halve.</div>`;
+  if (res.shortened) return `<div class="tip" style="margin:0 0 12px"><b>Short match: ends after hole ${res.lastHole}.</b>${body}</div>`;
+  const key = 'lh-' + r.id + '-' + pairing.id;
+  return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} style="margin:0 0 12px"><summary class="muted" style="cursor:pointer;font-size:13px">Losing the light? Shorten this match</summary>${body}</details>`;
+}
+
+/* count holes with a missing score across the pairing (so the user can find gaps).
+ * Holes after a shortened match's last hole don't count as missing. */
 function countMissing(r, pairing, c) {
-  const n = c.holes.length;
+  const n = matchLastHole(r, pairing, c.holes.length);
   let miss = 0;
-  if (r.format === 'scramble') {
+  if (isTeamBall(r.format)) {
     for (let h = 0; h < n; h++) { if (getTeam(r, pairing.id, 'A', h) == null) miss++; if (getTeam(r, pairing.id, 'B', h) == null) miss++; }
   } else {
     const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
@@ -696,7 +741,7 @@ function countMissing(r, pairing, c) {
 function scoreCard(r, pairing, c) {
   const holes = c.holes;
   let units;
-  if (r.format === 'scramble') {
+  if (isTeamBall(r.format)) {
     const res = resolvePairingMatch(S(), r, pairing);
     units = ['A', 'B'].map((side) => {
       const ids = side === 'A' ? pairing.teamA : pairing.teamB;
@@ -762,7 +807,7 @@ function roundUnits(r) {
   }
   const units = [];
   (r.pairings || []).forEach((p) => {
-    if (r.format === 'scramble') {
+    if (isTeamBall(r.format)) {
       const res = resolvePairingMatch(S(), r, p);
       ['A', 'B'].forEach((side) => {
         const ids = side === 'A' ? (p.teamA || []) : (p.teamB || []);
@@ -929,7 +974,7 @@ function viewMyCard() {
     const tag = Eng.matchTag(mine.m, sa ? sa.name.replace('Team ', '') : 'A', sb ? sb.name.replace('Team ', '') : 'B');
     const line = playerRoundLine(st, r, me.id);
     return `<div class="list-row" style="justify-content:space-between">
-      <div><b>${esc(r.name.replace(/^Round \d+ — /, ''))}</b> <span class="muted">${fmtInfo(r.format).short}</span>
+      <div><b>${esc(r.name.replace(/^Round \d+ — /, ''))}</b> <span class="muted">${shortLabel(r)}</span>
         <div class="muted" style="font-size:12px">vs ${oppIds.map((x) => esc(player(x) ? player(x).name : '?')).join(' / ')}${line.played ? ` · ${line.gross} (${fmtToPar(line.toPar)})` : ''}</div></div>
       <div style="text-align:right"><div style="font-weight:800;font-size:13px">${esc(tag)}</div><button class="btn ghost small" data-action="enter-scores" data-rid="${r.id}" data-pid="${mine.pairing.id}" style="margin-top:4px">Score</button></div>
     </div>`;
@@ -959,7 +1004,7 @@ function pairEditor(r) {
   // course handicap for that round (resolves tee/course/allowance%/basis)
   const chOf = (pairing, pid) => {
     const hc = matchHandicaps(S(), r, pairing);
-    return hc.scramble ? effectiveCH(S(), player(pid), r) : (hc.byPlayer[pid] != null ? hc.byPlayer[pid] : 0);
+    return hc.teamBall ? effectiveCH(S(), player(pid), r) : (hc.byPlayer[pid] != null ? hc.byPlayer[pid] : 0);
   };
   const chips = (pairing, side, ids) => (ids || []).map((pid) => {
     const p = player(pid);
@@ -1216,7 +1261,19 @@ function setupRounds() {
         ${ptsFields}
         <div class="field"><label>Handicap %</label><select data-action="round-hcpallow" data-id="${id}">${[100, 90, 85, 80, 75, 70, 50].map((a) => `<option value="${a}" ${ruleHandicap(r).allowance === a ? 'selected' : ''}>${a}%</option>`).join('')}</select></div>
       </div>
-      ${sys === 'holes' ? `<div class="muted" style="font-size:12px;margin:-2px 0 8px">Each won hole = ${hp} pt (halves split), winning the match = ${mp} pt → up to <b>${(hp * nholes + mp)}</b> pts per match over ${nholes} holes.</div>` : ''}`;
+      ${sys === 'holes' ? `<div class="muted" style="font-size:12px;margin:-2px 0 8px">Each won hole = ${hp} pt (halves split), winning the match = ${mp} pt → up to <b>${(hp * nholes + mp)}</b> pts per match over ${nholes} holes.</div>` : ''}
+      ${(() => {
+        // Sunset: every match in the round ends after this hole (a match's own
+        // setting on the scoring screen wins over it).
+        const cur = r.lastHole ? Math.min(nholes, Number(r.lastHole)) : nholes;
+        let o = '';
+        for (let n = nholes; n >= 1; n--) o += `<option value="${n === nholes ? '' : n}" ${cur === n ? 'selected' : ''}>${n === nholes ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
+        return `<div class="grid2" style="margin-bottom:6px;align-items:end">
+          <div class="field"><label>Matches end after</label><select data-action="round-lasthole" data-id="${id}">${o}</select></div>
+          <div class="field"><button class="btn secondary small" data-action="call-round" data-rid="${id}">End unfinished matches now</button></div>
+        </div>
+        <div class="muted" style="font-size:12px;margin:-2px 0 8px">Losing the light? <b>End unfinished matches now</b> stops each live match at the last hole both sides finished (the fewest holes, for a match across two groups).</div>`;
+      })()}`;
       })()}
       ${r.format === 'teamscramble'
         ? '<div class="muted" style="font-size:13px;margin-top:6px">Teams are your <b>squads</b> — make one squad per team in the <b>Players</b> tab and put 4 players on each. No matchups needed.</div>'
@@ -1387,7 +1444,7 @@ function printCard(r, c, pairing, idx) {
   // Group into sides so we can add a per-team "net" row and a "hole won" row.
   const isTeam = fmtInfo(r.format).perSide === 2;
   let sides;
-  if (r.format === 'scramble') {
+  if (isTeamBall(r.format)) {
     const res = resolvePairingMatch(st, r, pairing);
     sides = ['A', 'B'].map((side) => {
       const ids = side === 'A' ? pairing.teamA : pairing.teamB;
@@ -1550,6 +1607,7 @@ function sheet() {
     <div class="rule"><b>Round weighting — ${st.tournament.weightMode === 'normalized' ? 'Equal-weight' : 'True points'}</b><div class="ex">${st.tournament.weightMode === 'normalized'
       ? 'Every round is worth the same toward the Tournament, so no single day dominates.'
       : 'Each round counts at face value — a round with more matches puts more points in play. (Switch to "Equal-weight" in Setup if you\'d rather every round count the same.)'}</div></div>
+    ${stand.strokePlay ? '' : '<div class="rule"><b>Running out of light</b><div class="ex">A match can end early at the hole your group agrees on (<b>Shorten this match</b> on the scoring screen). A match across two groups ends at the fewest holes both finished. Holes after it don\'t count, and a tie is a halve.</div></div>'}
     <p class="muted" style="font-size:13px">Every player gets handicap strokes based on the tee\'s slope &amp; rating (the red dots on the scorecard).</p>
     <button class="btn" data-action="close-sheet">Got it</button>
   </div></div>`;
@@ -1609,6 +1667,12 @@ app.addEventListener('click', (e) => {
     'csv-import': () => { const inp = document.getElementById('csv-file'); if (inp) inp.click(); },
     clear: () => { if (confirm('Clear all data on this device?')) { Store.importJSON(JSON.stringify(Store.emptyState())); ui.view = 'home'; render(); } },
     'auto-pair': () => autoPair(t.dataset.id),
+    'call-match': () => {
+      const n = Number(t.dataset.n);
+      if (!n || !confirm(`End this match after hole ${n}? Holes after it won't count, and if it's tied after hole ${n} it's a halve.`)) return;
+      setMatchLastHole(t.dataset.rid, t.dataset.pid, n);
+    },
+    'call-round': () => callRound(t.dataset.rid),
     'add-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = r.pairings || []; r.pairings.push({ id: Store.uid('m'), teamA: [], teamB: [] }); }),
     'del-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); }),
     mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
@@ -1670,6 +1734,8 @@ app.addEventListener('change', (e) => {
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
     'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
     'round-tee': () => Store.update((s) => { s.rounds[t.dataset.id].defaultTeeId = v; }),
+    'round-lasthole': () => Store.update((s) => { const r = s.rounds[t.dataset.id]; if (!r) return; if (v) r.lastHole = Number(v); else delete r.lastHole; }),
+    'match-lasthole': () => setMatchLastHole(t.dataset.rid, t.dataset.pid, Number(v)),
     'round-tee-override': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.teeOverrides = r.teeOverrides || {}; if (v) r.teeOverrides[t.dataset.pid] = v; else delete r.teeOverrides[t.dataset.pid]; }),
     'course-name': () => Store.update((s) => { s.courses[t.dataset.id].name = v; }),
     'tee-name': () => Store.update((s) => { s.courses[t.dataset.cid].tees[t.dataset.id].name = v; }),
@@ -1686,6 +1752,39 @@ app.addEventListener('change', (e) => {
   };
   if (set[a]) set[a]();
 });
+
+/* Per-match last hole lives in round.lastHoles[pairingId] (not on the pairing
+ * itself): pairings is an array that syncs as one value, so two scorers calling
+ * their matches at sunset would overwrite each other. A keyed map writes only
+ * its own leaf. */
+function setMatchLastHole(rid, pid, n) {
+  Store.update((s) => {
+    const r = s.rounds[rid];
+    if (!r || !pid) return;
+    r.lastHoles = r.lastHoles || {};
+    if (n) r.lastHoles[pid] = n; else delete r.lastHoles[pid];
+  });
+}
+
+/* Sunset for a whole round: every match still in play ends at the last hole
+ * both sides finished. Matches already decided, or not started, are left alone. */
+function callRound(rid) {
+  const r = round(rid);
+  if (!r) return;
+  const calls = [];
+  (r.pairings || []).forEach((p) => {
+    const res = resolvePairingMatch(S(), r, p);
+    if (res && res.m.result === 'IP' && res.bothFinished >= 1) calls.push({ pid: p.id, n: res.bothFinished });
+  });
+  if (!calls.length) { alert('No match is in play, so there is nothing to end.'); return; }
+  const list = calls.map((x) => 'after hole ' + x.n).join(', ');
+  if (!confirm(`End ${calls.length} unfinished match${calls.length === 1 ? '' : 'es'} (${list})? Holes after that don't count, and a tie is a halve.`)) return;
+  Store.update((s) => {
+    const rr = s.rounds[rid];
+    rr.lastHoles = rr.lastHoles || {};
+    calls.forEach((x) => { rr.lastHoles[x.pid] = x.n; });
+  });
+}
 
 function skinSet(rid, patch) {
   Store.update((s) => {
@@ -1760,7 +1859,7 @@ function autoPair(rid) {
     if (ids.length < 2) return;
     const a = Object.keys(s.players).filter((pid) => s.players[pid].squadId === ids[0]);
     const b = Object.keys(s.players).filter((pid) => s.players[pid].squadId === ids[1]);
-    const per = (FORMAT_INFO[r.format] || {}).perSide || 1;
+    const per = Number(r.perSide) || (FORMAT_INFO[r.format] || {}).perSide || 1; // round can override (4-man scramble)
     r.pairings = [];
     const n = Math.max(Math.ceil(a.length / per), Math.ceil(b.length / per));
     for (let i = 0; i < n; i++) {

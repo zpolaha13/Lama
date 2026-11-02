@@ -146,6 +146,8 @@ export function fromCSV(text, warnings) {
       },
       pairings: [], scores: {}, teamScores: {}, teeOverrides: {}, teeTimes: [],
     };
+    // optional players per side (e.g. 4 for a 4-man scramble) so auto-pair builds 4v4
+    if (Number(r.perSide) > 0) st.rounds[rid].perSide = Math.round(Number(r.perSide));
     st.tournament.roundOrder.push(rid);
     const val = Number(r.skinsValue || r.skins || 0);
     const mode = String(r.skinsMode || 'net').toLowerCase() === 'gross' ? 'gross' : 'net';
@@ -222,13 +224,13 @@ export function toCSV(st) {
   Object.values(st.courses).forEach((c) => (c.holes || []).forEach((h, i) => row([c.id, i + 1, h.par, h.si])));
   L.push('');
 
-  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch,ptsPerHole,ptsMatchBonus,skinsValue,skinsMode,skinsTie,date');
+  L.push('#ROUNDS'); L.push('roundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch,ptsPerHole,ptsMatchBonus,skinsValue,skinsMode,skinsTie,date,perSide');
   order.forEach((rid) => {
     const r = st.rounds[rid]; if (!r) return;
     const sk = st.skins[rid] || {}; const sr = r.scoringRule || {};
     row([rid, r.name, r.courseId, r.format, teeName(st, r.courseId, r.defaultTeeId), sr.handicapAllowance, sr.handicapMode,
       sr.pointSystem || 'match', sr.pointsPerMatch != null ? sr.pointsPerMatch : 1, sr.holePoints != null ? sr.holePoints : 0.5, sr.matchPoints != null ? sr.matchPoints : 1,
-      sk.enabled ? sk.value : 0, sk.mode || 'net', sk.tie || 'rollover', r.date || '']);
+      sk.enabled ? sk.value : 0, sk.mode || 'net', sk.tie || 'rollover', r.date || '', r.perSide || '']);
   });
   L.push('');
 

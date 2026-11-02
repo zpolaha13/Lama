@@ -331,5 +331,109 @@ eq(diffPaths({ a: { b: 1 } }, { a: { b: 1 } }, '', {}), {}, 'diff: no change = e
   eq(xl.rounds.r1.pairings.length, 6, 'csv: pairings survive spreadsheet padding');
 }
 
+/* ---------------- foursomes (alternate shot) ---------------- */
+eq(G.foursomesHandicap([10, 20]), 15, 'foursomes hc = 50% of combined');
+eq(G.foursomesHandicap([9, 4]), 7, 'foursomes hc rounds 6.5 up');
+eq(G.foursomesHandicap([10, 20], 50), 8, 'foursomes allowance scales the 50% (7.5 -> 8)');
+eq(G.foursomesHandicap([]), 0, 'foursomes hc empty');
+
+// minimal match-play world: flat par-4 course, SI 1..18, slope 113 / rating 72
+function world(format, teamA, teamB, idx) {
+  const players = {};
+  Object.entries(idx).forEach(([id, index], i) => { players[id] = { id, name: id, index, squadId: teamA.includes(id) ? 'red' : 'blue', defaultTeeId: '' }; });
+  return {
+    tournament: { winPoints: 1, tiePoints: 0.5, weightMode: 'true', normalizeTarget: 4, roundOrder: ['r'] },
+    squads: { red: { name: 'Red' }, blue: { name: 'Blue' } },
+    players,
+    courses: { c: { name: 'C', tees: { t: { name: 'T', rating: 72, slope: 113 } }, holes: Array.from({ length: 18 }, (_, i) => ({ par: 4, si: i + 1 })) } },
+    rounds: { r: { id: 'r', courseId: 'c', format, defaultTeeId: 't', status: 'auto', scoringRule: { handicapAllowance: 100, handicapMode: 'absolute' }, pairings: [{ id: 'm1', teamA, teamB }], scores: {}, teamScores: {} } },
+    skins: {},
+  };
+}
+{
+  const st = world('foursomes', ['a1', 'a2'], ['b1', 'b2'], { a1: 10, a2: 20, b1: 0, b2: 0 });
+  const r = st.rounds.r;
+  const hc = matchHandicaps(st, r, r.pairings[0]);
+  eq([hc.teamBall, hc.teamA, hc.teamB], [true, 15, 0], 'foursomes: one team handicap per side (50% combined)');
+  // both sides make 4 on every hole: Red gets a stroke on SI 1-15 -> wins 15 holes
+  r.teamScores = { m1: { A: {}, B: {} } };
+  for (let h = 0; h < 18; h++) { r.teamScores.m1.A[h] = 4; r.teamScores.m1.B[h] = 4; }
+  const res = resolveRound(st, r);
+  eq(res.matches[0].m.result, 'A', 'foursomes: team strokes decide the match');
+  eq(res.matches[0].chA, 15, 'foursomes: chA on the result');
+  eq(res.raw.red, 1, 'foursomes: winner gets the match point');
+}
+
+/* ---------------- last hole (sunset) ---------------- */
+{
+  const st = world('singles', ['a'], ['b'], { a: 0, b: 0 });
+  const r = st.rounds.r;
+  r.scores = { a: {}, b: {} };
+  for (let h = 0; h < 15; h++) { r.scores.a[h] = h < 2 ? 3 : 4; r.scores.b[h] = 4; } // A wins 1-2, halves to 15
+  eq(resolveRound(st, r).matches[0].m.result, 'IP', 'no last hole: 2 UP thru 15 is still in play');
+  r.lastHole = 15;
+  let m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.status, m.m.remaining, m.lastHole, m.shortened], ['A', 2, 0, 15, true], 'round last hole 15: 2 UP after 15 wins');
+  eq(resolveRound(st, r).status, 'final', 'round is final once every match reaches its last hole');
+  r.lastHoles = { m1: 18 };
+  eq(resolveRound(st, r).matches[0].m.result, 'IP', 'a match setting beats the round setting');
+  r.lastHoles = { m1: 13 };
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.played], ['A', 13], 'last hole 13: holes 14-15 do not count');
+  r.lastHoles = { m1: 1 };
+  eq(resolveRound(st, r).matches[0].m.result, 'A', 'last hole 1: 1 UP after 1 wins');
+  delete r.lastHole; r.lastHoles = {};
+  for (let h = 0; h < 2; h++) r.scores.a[h] = 4; // now all square thru 15
+  r.lastHoles = { m1: 15 };
+  m = resolveRound(st, r);
+  eq([m.matches[0].m.result, m.raw.red, m.raw.blue], ['AS', 0.5, 0.5], 'tie after the last hole is a halve');
+  // decided early inside a short match: 3 UP with 2 to play of 15 -> 3 & 2
+  r.scores = { a: {}, b: {} };
+  for (let h = 0; h < 13; h++) { r.scores.a[h] = h < 3 ? 3 : 4; r.scores.b[h] = 4; }
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.remaining, G.matchTag(m.m, 'Red', 'Blue')], ['A', 2, 'Red 3 & 2'], 'closed out inside a 15-hole match');
+}
+{
+  // match across two groups (4-man scramble): A finished 15, B finished 14
+  const st = world('scramble', ['a1', 'a2', 'a3', 'a4'], ['b1', 'b2', 'b3', 'b4'], { a1: 0, a2: 0, a3: 0, a4: 0, b1: 0, b2: 0, b3: 0, b4: 0 });
+  const r = st.rounds.r;
+  r.teamScores = { m1: { A: {}, B: {} } };
+  for (let h = 0; h < 15; h++) r.teamScores.m1.A[h] = h === 14 ? 3 : 4; // A birdies 15, which B has not played
+  for (let h = 0; h < 14; h++) r.teamScores.m1.B[h] = h === 0 ? 3 : 4;  // B wins hole 1
+  let m = resolveRound(st, r).matches[0];
+  eq([m.bothFinished, m.m.result], [14, 'IP'], 'cross-group: fewest holes both finished = 14');
+  r.lastHoles = { m1: m.bothFinished };
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.played], ['B', 14], 'cross-group: decided over 14, A\'s 15th hole ignored');
+  eq(hcTeam4(st), [0, 0], 'scramble 4-man scratch team handicap');
+  function hcTeam4(s) { const h = matchHandicaps(s, s.rounds.r, s.rounds.r.pairings[0]); return [h.teamA, h.teamB]; }
+}
+
+/* ---------------- points per match + 15.5 target (Bogey-Man layout) ---------------- */
+{
+  const st = world('fourball', ['a1', 'a2'], ['b1', 'b2'], { a1: 0, a2: 0, b1: 0, b2: 0, a3: 0, a4: 0, b3: 0, b4: 0, a5: 0, a6: 0, b5: 0, b6: 0, a7: 0, a8: 0, b7: 0, b8: 0 });
+  ['a3', 'a4', 'a5', 'a6', 'a7', 'a8'].forEach((id) => { st.players[id].squadId = 'red'; });
+  ['b3', 'b4', 'b5', 'b6', 'b7', 'b8'].forEach((id) => { st.players[id].squadId = 'blue'; });
+  const A = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'], B = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8'];
+  const pairs = (n) => Array.from({ length: 8 / n }, (_, i) => ({ id: 'p' + n + i, teamA: A.slice(i * n, i * n + n), teamB: B.slice(i * n, i * n + n) }));
+  const mk = (id, format, per, ppm) => ({ id, courseId: 'c', format, defaultTeeId: 't', status: 'auto', scoringRule: { handicapAllowance: 100, handicapMode: 'absolute', pointsPerMatch: ppm }, pairings: pairs(per), scores: {}, teamScores: {} });
+  st.rounds = { fb: mk('fb', 'fourball', 2, 2), fs: mk('fs', 'foursomes', 2, 2), sg: mk('sg', 'singles', 1, 1), sc: mk('sc', 'scramble', 4, 3) };
+  st.tournament.roundOrder = ['fb', 'fs', 'sg', 'sc'];
+  const s0 = computeStandings(st);
+  eq([s0.rounds.map((x) => x.pointsAvailable), s0.totalAvailable, s0.target], [[8, 8, 8, 6], 30, 15.5], 'Bogey-Man: 8+8+8+6 = 30 points, first to 15.5');
+  // a halved 3-point scramble match splits 1.5 / 1.5
+  const sc = st.rounds.sc; sc.teamScores = { p40: { A: {}, B: {} } };
+  for (let h = 0; h < 18; h++) { sc.teamScores.p40.A[h] = 4; sc.teamScores.p40.B[h] = 4; }
+  const s1 = computeStandings(st);
+  eq([s1.rounds[3].raw.red, s1.rounds[3].raw.blue], [1.5, 1.5], 'halved 3-point match = 1½ each');
+}
+
+/* ---------------- CSV keeps the new format ---------------- */
+{
+  const csv = '#TOURNAMENT\nname\nT\n#SQUADS\nid,name,color\nred,Red,#D0021B\nblue,Blue,#1B6FB3\n#PLAYERS\nname,index,squad\nA1,0,red\nA2,0,red\nB1,0,blue\nB2,0,blue\n#COURSES\ncourseId,courseName,teeName,rating,slope\nc,C,Blue,72,113\n#ROUNDS\nroundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch\nfs,Foursomes,c,foursomes,Blue,100,relative,match,2\n#PAIRINGS\nroundId,teamA,teamB\nfs,A1|A2,B1|B2\n';
+  const st = fromCSV(csv);
+  eq([st.rounds.fs.format, st.rounds.fs.scoringRule.pointsPerMatch, st.rounds.fs.pairings[0].teamA.length], ['foursomes', 2, 2], 'CSV imports a foursomes round at 2 pts/match');
+}
+
 console.log(`\nPASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

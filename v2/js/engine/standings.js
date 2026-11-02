@@ -9,9 +9,36 @@
  * ========================================================================= */
 
 import {
-  courseHandicap, bestBallNets, scrambleNets, scrambleHandicap, strokesOnHole,
+  courseHandicap, bestBallNets, scrambleNets, scrambleHandicap, foursomesHandicap, strokesOnHole,
   matchFromNets, playerRoundTotals, roundHalf,
 } from './golf.js';
+
+/* Formats where each side plays ONE ball and the scorer enters one team score
+ * per side per hole: scramble (best shot) and foursomes (alternate shot). */
+export function isTeamBall(format) {
+  return format === 'scramble' || format === 'foursomes';
+}
+
+/* Last hole a match is played to. Afternoon rounds can be cut short at
+ * sunset: a per-match value (round.lastHoles[pairingId]) wins, then a value
+ * for the whole round (round.lastHole), else the full course. */
+export function matchLastHole(round, pairing, fullHoles) {
+  const full = fullHoles || 18;
+  const per = round && round.lastHoles && pairing ? round.lastHoles[pairing.id] : null;
+  const v = Number(per != null && per !== '' ? per : (round && round.lastHole != null && round.lastHole !== '' ? round.lastHole : full));
+  if (!v || isNaN(v)) return full;
+  return Math.max(1, Math.min(full, Math.round(v)));
+}
+
+/* Last hole BOTH sides have a score on (0 if none). For a match played across
+ * two groups this is the fewest holes finished, which the sheet rules count
+ * as the final hole when a round is called early. */
+export function holesBothFinished(netsA, netsB) {
+  let last = 0;
+  const n = Math.max((netsA || []).length, (netsB || []).length);
+  for (let i = 0; i < n; i++) if (netsA[i] != null && netsB[i] != null) last = i + 1;
+  return last;
+}
 
 /* ---- small resolvers over the state shape ---- */
 
@@ -139,18 +166,22 @@ export function effectiveCH(state, player, round) {
  * For 'relative', strokes are shifted so the lowest in the match plays off scratch. */
 export function matchHandicaps(state, round, pairing) {
   const { mode, allowance } = ruleHandicap(round);
-  if (round.format === 'scramble') {
-    // One total team handicap = USGA scramble blend of each side's RAW course
-    // handicaps (allowance applied once to the blend, NOT per player — the
-    // 35/15 weighting IS the scramble allowance, so don't double-discount).
-    const teamCH = (ids) => scrambleHandicap(
+  if (isTeamBall(round.format)) {
+    // One total team handicap from each side's RAW course handicaps, with the
+    // allowance applied once to the blend, NOT per player:
+    //  - scramble: USGA blend (2-man 35/15 … 4-man 25/20/15/10). The weighting
+    //    IS the scramble allowance, so don't double-discount.
+    //  - foursomes: 50% of the combined course handicaps.
+    const blend = round.format === 'foursomes' ? foursomesHandicap : scrambleHandicap;
+    const teamCH = (ids) => blend(
       (ids || []).map((pid) => state.players[pid]).filter(Boolean).map((p) => chFor(state, p, round)),
       allowance,
     );
     let chA = teamCH(pairing.teamA);
     let chB = teamCH(pairing.teamB);
     if (mode === 'relative') { const m = Math.min(chA, chB); chA -= m; chB -= m; }
-    return { scramble: true, teamA: chA, teamB: chB, byPlayer: {} };
+    // `scramble` kept as an alias of teamBall for older callers.
+    return { teamBall: true, scramble: true, teamA: chA, teamB: chB, byPlayer: {} };
   }
   const all = [...(pairing.teamA || []), ...(pairing.teamB || [])];
   const eff = {};
@@ -171,7 +202,8 @@ export function resolvePairingMatch(state, round, pairing) {
   const hc = matchHandicaps(state, round, pairing);
   let netsA, netsB, chA, chB;
 
-  if (round.format === 'scramble') {
+  if (isTeamBall(round.format)) {
+    // scramble / foursomes: one team ball per side (strokes run off the team handicap)
     chA = hc.teamA; chB = hc.teamB;
     netsA = scrambleNets(chA, holes, (h) => getTeamScore(round, pairing.id, 'A', h));
     netsB = scrambleNets(chB, holes, (h) => getTeamScore(round, pairing.id, 'B', h));
@@ -181,8 +213,13 @@ export function resolvePairingMatch(state, round, pairing) {
     netsA = bestBallNets(pa, holes, (pid, h) => getScore(round, pid, h));
     netsB = bestBallNets(pb, holes, (pid, h) => getScore(round, pid, h));
   }
-  const m = matchFromNets(netsA, netsB, holes.length);
-  return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB };
+  // A match called early (sunset) is decided over its last hole only: holes
+  // after it don't count, and remaining strokes are measured against it.
+  const bothFinished = holesBothFinished(netsA, netsB);
+  const lastHole = matchLastHole(round, pairing, holes.length);
+  if (lastHole < holes.length) { netsA = netsA.slice(0, lastHole); netsB = netsB.slice(0, lastHole); }
+  const m = matchFromNets(netsA, netsB, lastHole);
+  return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB, lastHole, shortened: lastHole < holes.length, bothFinished };
 }
 
 /* Points a match awards to each side under a given scoring system.
