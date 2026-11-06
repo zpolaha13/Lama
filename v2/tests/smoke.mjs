@@ -225,6 +225,21 @@ fireClick({ action: 'close-sheet' });
 fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
 fireChange({ action: 'round-format', id: 'r2' }, 'fourball'); // back to fourball for the skins checks below
 
+// rain day: a round can play only the back nine
+{
+  if (appEl.innerHTML.includes('data-action="round-nine"')) console.log('ok holes-played select'); else { errors++; console.log('HOLES-played select missing'); }
+  fireChange({ action: 'round-nine', id: 'r2' }, 'back');
+  if (Store.get().rounds.r2.nine === 'back') console.log('ok round set to back nine'); else { errors++; console.log('NINE not stored'); }
+  fireClick({ action: 'enter-scores', rid: 'r2' });
+  if (/HOLE 10 · BACK 9/.test(appEl.innerHTML) && /data-dir="-1" disabled/.test(appEl.innerHTML)) console.log('ok back nine starts at hole 10'); else { errors++; console.log('BACK nine start wrong', (appEl.innerHTML.match(/HOLE [^<]*/) || [''])[0]); }
+  fireClick({ action: 'score-mode', mode: 'card' });
+  if (appEl.innerHTML.includes('>In<') && !appEl.innerHTML.includes('>Out<')) console.log('ok full card shows only the back nine'); else { errors++; console.log('FULL card nine wrong'); }
+  fireClick({ action: 'score-mode', mode: 'hole' });
+  fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
+  fireChange({ action: 'round-nine', id: 'r2' }, '');
+  if (Store.get().rounds.r2.nine == null) console.log('ok back to all 18'); else { errors++; console.log('NINE not cleared'); }
+}
+
 // singles: a group of 4 is scored on one screen (both matches), with a toggle
 {
   // earlier steps left r1 with 2-player tee times; clear them so matches pair up as listed (1+2, 3+4, ...)

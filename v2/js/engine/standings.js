@@ -23,11 +23,23 @@ export function isTeamBall(format) {
  * sunset: a per-match value (round.lastHoles[pairingId]) wins, then a value
  * for the whole round (round.lastHole), else the full course. */
 export function matchLastHole(round, pairing, fullHoles) {
-  const full = fullHoles || 18;
+  const { first, last } = roundHoles(round, fullHoles);
   const per = round && round.lastHoles && pairing ? round.lastHoles[pairing.id] : null;
-  const v = Number(per != null && per !== '' ? per : (round && round.lastHole != null && round.lastHole !== '' ? round.lastHole : full));
-  if (!v || isNaN(v)) return full;
-  return Math.max(1, Math.min(full, Math.round(v)));
+  const v = Number(per != null && per !== '' ? per : (round && round.lastHole != null && round.lastHole !== '' ? round.lastHole : last));
+  if (!v || isNaN(v)) return last;
+  return Math.max(first, Math.min(last, Math.round(v)));
+}
+
+/* Which holes a round plays: all of them, or one nine of an 18-hole course
+ * (a rain-shortened day can play the front 9 as one round and the back 9 as
+ * another). round.nine = 'front' | 'back'; anything else = every hole.
+ * Strokes still come from the 18-hole stroke index, which gives each nine
+ * about half a player's strokes. */
+export function roundHoles(round, fullHoles) {
+  const full = fullHoles || 18;
+  if (full === 18 && round && round.nine === 'front') return { first: 1, last: 9 };
+  if (full === 18 && round && round.nine === 'back') return { first: 10, last: 18 };
+  return { first: 1, last: full };
 }
 
 /* Last hole BOTH sides have a score on (0 if none). For a match played across
@@ -217,13 +229,18 @@ export function resolvePairingMatch(state, round, pairing) {
   // after it don't count, and remaining strokes are measured against it.
   // The round-wide sunset hole never re-decides a match that already finished
   // over the full round; only a match's own setting can shorten it then.
+  // A round may play only one nine (first..nineLast); the match is decided
+  // over that window. lastHole/endHole/bothFinished are real hole numbers.
+  const { first, last: nineLast } = roundHoles(round, holes.length);
+  const win = (arr, upTo) => arr.slice(first - 1, upTo);
   const bothFinished = holesBothFinished(netsA, netsB);
   let lastHole = matchLastHole(round, pairing, holes.length);
   const ownSetting = round.lastHoles && round.lastHoles[pairing.id] != null && round.lastHoles[pairing.id] !== '';
-  if (!ownSetting && lastHole < holes.length && matchFromNets(netsA, netsB, holes.length).result !== 'IP') lastHole = holes.length;
-  if (lastHole < holes.length) { netsA = netsA.slice(0, lastHole); netsB = netsB.slice(0, lastHole); }
-  const m = matchFromNets(netsA, netsB, lastHole);
-  return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB, lastHole, shortened: lastHole < holes.length, bothFinished };
+  if (!ownSetting && lastHole < nineLast && matchFromNets(win(netsA, nineLast), win(netsB, nineLast), nineLast - first + 1).result !== 'IP') lastHole = nineLast;
+  netsA = win(netsA, lastHole); netsB = win(netsB, lastHole);
+  const m = matchFromNets(netsA, netsB, lastHole - first + 1);
+  const endHole = m.decidedAt ? first - 1 + m.decidedAt : lastHole; // last hole the match needs
+  return { pairing, squadA, squadB, chA, chB, hc, m, netsA, netsB, firstHole: first, lastHole, nineLast, endHole, shortened: lastHole < nineLast, bothFinished };
 }
 
 /* Points a match awards to each side under a given scoring system.
@@ -281,7 +298,8 @@ export function resolveRound(state, round) {
   // total, scales with holes). Per-round override, else tournament default.
   const rule = round.scoringRule || {};
   const course = state.courses[round.courseId];
-  const holeCount = course && course.holes ? course.holes.length : 18;
+  const nineWin = roundHoles(round, course && course.holes ? course.holes.length : 18);
+  const holeCount = nineWin.last - nineWin.first + 1; // holes this round plays (9 for a single nine)
   const system = rule.pointSystem || 'match';
   const opts = {
     system,

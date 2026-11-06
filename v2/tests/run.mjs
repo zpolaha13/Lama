@@ -471,6 +471,32 @@ function world(format, teamA, teamB, idx) {
   eq([s.cup.red, s.cup.blue, s.totalAvailable, s.target, s.clinched], [10, 6, 30, 15.5, null], 'Friday night 10-6 with Saturday unpaired: still first to 15.5, nobody clinched');
 }
 
+/* ---------------- 9-hole rounds (rain day: front 9 one format, back 9 another) ---------------- */
+{
+  const st = world('fourball', ['a1', 'a2'], ['b1', 'b2'], { a1: 0, a2: 0, b1: 0, b2: 0 });
+  const r = st.rounds.r;
+  r.nine = 'back';
+  r.scores = { a1: {}, a2: {}, b1: {}, b2: {} };
+  for (let h = 9; h < 18; h++) ['a1', 'a2', 'b1', 'b2'].forEach((p) => { r.scores[p][h] = (p === 'a1' && h === 9) ? 3 : 4; }); // A wins 10, halves the rest
+  let res = resolveRound(st, r);
+  let m = res.matches[0];
+  eq([m.m.result, m.m.status, m.m.played, m.firstHole, m.lastHole, m.endHole, m.shortened, res.status], ['A', 1, 9, 10, 18, 18, false, 'final'], 'back nine: 1 UP over holes 10-18 is final');
+  r.lastHoles = { m1: 16 };
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.played, m.lastHole, m.shortened], ['A', 7, 16, true], 'back nine + sunset at 16: decided over 10-16');
+  r.lastHoles = { m1: 5 };
+  eq(resolveRound(st, r).matches[0].lastHole, 10, 'a last hole before the nine starts clamps to its first hole');
+  // front nine: 3 UP after 7 -> 3 & 2; back-nine scores are ignored
+  r.nine = 'front'; r.lastHoles = {};
+  r.scores = { a1: {}, a2: {}, b1: {}, b2: {} };
+  for (let h = 0; h < 18; h++) ['a1', 'a2', 'b1', 'b2'].forEach((p) => { r.scores[p][h] = (p === 'a1' && h < 3) ? 3 : (p.startsWith('b') && h >= 9 ? 2 : 4); });
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, G.matchTag(m.m, 'Red', 'Blue'), m.endHole, m.lastHole], ['A', 'Red 3 & 2', 7, 9], 'front nine: 3 & 2 after 7, back nine ignored');
+  // points per match unchanged for a nine
+  r.scoringRule.pointsPerMatch = 2;
+  eq([resolveRound(st, r).raw.red, resolveRound(st, r).pointsAvailable], [2, 2], 'a nine-hole match still worth its points');
+}
+
 /* ---------------- CSV keeps the new format ---------------- */
 {
   const csv = '#TOURNAMENT\nname\nT\n#SQUADS\nid,name,color\nred,Red,#D0021B\nblue,Blue,#1B6FB3\n#PLAYERS\nname,index,squad\nA1,0,red\nA2,0,red\nB1,0,blue\nB2,0,blue\n#COURSES\ncourseId,courseName,teeName,rating,slope\nc,C,Blue,72,113\n#ROUNDS\nroundId,name,courseId,format,tee,handicapAllowance,handicapMode,pointSystem,ptsPerMatch\nfs,Foursomes,c,foursomes,Blue,100,relative,match,2\n#PAIRINGS\nroundId,teamA,teamB\nfs,A1|A2,B1|B2\n';

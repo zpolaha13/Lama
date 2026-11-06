@@ -7,7 +7,7 @@
 import * as Store from './store.js';
 import { isFirebaseConfigured, GHIN_PROXY_URL } from './config.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound, isTeamBall, matchLastHole } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound, isTeamBall, matchLastHole, roundHoles } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
@@ -627,7 +627,7 @@ function matchList(rr) {
       pt = `${fmt(res.pts.a)} – ${fmt(res.pts.b)}`;
     } else if (res.m.result !== 'IP' && res.pts) pt = `${ptsTxt(res.pts.a)} – ${ptsTxt(res.pts.b)}`; // e.g. 2 – 0, 1½ – 1½
     else pt = res.m.played ? 'in play' : '';
-    const short = res.shortened ? `<div class="muted" style="font-size:11px">${res.lastHole}-hole match</div>` : '';
+    const short = res.shortened ? `<div class="muted" style="font-size:11px">ended after hole ${res.lastHole}</div>` : '';
     return `<div class="match">
       <div class="sides">
         <div class="side ${bUp ? 'dim' : ''}">${sdot(res.squadA)} ${names(res.pairing.teamA)}</div>
@@ -670,9 +670,11 @@ function viewScore() {
   if (!pairings.length) return '<div class="card"><div class="empty">No matchups in this round.</div></div>';
   if (!ui.scorePairingId || !pairings.find((p) => p.id === ui.scorePairingId)) ui.scorePairingId = defaultPairing(r).id;
   const pairing = pairings.find((p) => p.id === ui.scorePairingId);
-  const h = Math.max(0, Math.min(ui.holeIdx, c.holes.length - 1));
+  const span = roundHoles(r, c.holes.length); // e.g. holes 10-18 for a back-nine round
+  const h = Math.max(span.first - 1, Math.min(ui.holeIdx, span.last - 1));
   ui.holeIdx = h;
   const hole = c.holes[h];
+  const nineTag = r.nine === 'front' || r.nine === 'back' ? (r.nine === 'front' ? 'FRONT 9' : 'BACK 9') : '';
 
   // Singles: a group of 4 plays two matches, so by default the scorer gets the
   // whole group on one screen instead of flipping the Matchup menu every hole.
@@ -722,16 +724,16 @@ function viewScore() {
       ${modeSeg}`;
 
   if (ui.scoreMode === 'card') {
-    return head + cardTable(r, c.holes, unitList) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
+    return head + cardTable(r, c.holes, unitList, r.nine) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
       <div class="muted" style="font-size:12px;margin-top:8px">Tap any cell to type a score. ${missing > 0 ? 'Highlighted cells are blank — fill them to finish the round.' : 'All holes in — round result is final.'}</div>
     </div>`;
   }
 
   return head + `
       <div class="hole-nav">
-        <button data-action="hole" data-dir="-1" ${h === 0 ? 'disabled' : ''}>‹</button>
-        <div class="holeinfo"><div class="h num">HOLE ${h + 1} of ${c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
-        <button data-action="hole" data-dir="1" ${h === c.holes.length - 1 ? 'disabled' : ''}>›</button>
+        <button data-action="hole" data-dir="-1" ${h === span.first - 1 ? 'disabled' : ''}>‹</button>
+        <div class="holeinfo"><div class="h num">HOLE ${h + 1} ${nineTag ? '· ' + nineTag : 'of ' + c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
+        <button data-action="hole" data-dir="1" ${h === span.last - 1 ? 'disabled' : ''}>›</button>
       </div>
       ${units}
       <div class="tip" style="margin-top:8px">${finalLine}</div>
@@ -748,7 +750,8 @@ function lastHoleControl(r, pairing, res, full) {
   if (!res.shortened && res.m.result !== 'IP') return '';
   const cur = res.lastHole || full;
   let opts = '';
-  for (let n = full; n >= 1; n--) opts += `<option value="${n}" ${cur === n ? 'selected' : ''}>${n === full ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
+  const top = res.nineLast || full, bottom = res.firstHole || 1;
+  for (let n = top; n >= bottom; n--) opts += `<option value="${n}" ${cur === n ? 'selected' : ''}>${n === top ? 'Hole ' + n + (top - bottom < 17 ? ' (full nine)' : ' (full round)') : 'Hole ' + n}</option>`;
   const canCall = res.m.result === 'IP' && res.bothFinished >= 1 && res.bothFinished < cur;
   const body = `<div class="field" style="margin:8px 0 4px"><label>Match ends after</label><select data-action="match-lasthole" data-rid="${r.id}" data-pid="${pairing.id}">${opts}</select></div>
     ${canCall ? `<button class="btn secondary small" data-action="call-match" data-rid="${r.id}" data-pid="${pairing.id}" data-n="${res.bothFinished}">End it after hole ${res.bothFinished} (last hole both sides finished)</button>` : ''}
@@ -763,7 +766,7 @@ function lastHoleControl(r, pairing, res, full) {
  * last hole) don't count: nobody needs to post them. */
 function countMissing(units) {
   let miss = 0;
-  units.forEach((u) => { if (u.readOnly) return; for (let h = 0; h < u.endAt; h++) if (u.get(h) == null) miss++; });
+  units.forEach((u) => { if (u.readOnly) return; for (let h = u.startAt || 0; h < u.endAt; h++) if (u.get(h) == null) miss++; });
   return miss;
 }
 
@@ -804,7 +807,8 @@ function scoreUnits(r, c, pairings) {
   const units = [];
   pairings.forEach((pairing) => {
     const res = resolvePairingMatch(S(), r, pairing);
-    const endAt = res.m.decidedAt || res.lastHole || c.holes.length;
+    const endAt = res.endHole || c.holes.length; // closed out, sunset or end of the nine
+    const startAt = (res.firstHole || 1) - 1;       // a back-nine round starts at hole 10
     if (isTeamBall(r.format)) {
       const cross = (pairing.teamA || []).length + (pairing.teamB || []).length > 4;
       const mySide = me && (pairing.teamA || []).includes(me) ? 'A' : (me && (pairing.teamB || []).includes(me) ? 'B' : null);
@@ -812,13 +816,13 @@ function scoreUnits(r, c, pairings) {
       (mySide === 'B' ? ['B', 'A'] : ['A', 'B']).forEach((side) => {
         const ids = side === 'A' ? pairing.teamA : pairing.teamB;
         const sid = side === 'A' ? res.squadA : res.squadB;
-        units.push({ readOnly: onlyMine && side !== mySide, name: (squad(sid) ? squad(sid).name : side) + ' — ' + names(ids), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h), endAt });
+        units.push({ readOnly: onlyMine && side !== mySide, name: (squad(sid) ? squad(sid).name : side) + ' — ' + names(ids), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h), endAt, startAt });
       });
     } else {
       const hc = matchHandicaps(S(), r, pairing);
       [...(pairing.teamA || []), ...(pairing.teamB || [])].forEach((pid) => {
         const p = player(pid);
-        units.push({ name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h), endAt, tee: p ? teeNameFor(p, r) : '' });
+        units.push({ name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h), endAt, startAt, tee: p ? teeNameFor(p, r) : '' });
       });
     }
   });
@@ -839,7 +843,7 @@ function readOnlyUnitRow(u, h, holes) {
 /* shared full-card table builder: units = [{name, sdotId, ch, target, get(h),
  * endAt?, readOnly?}]. Holes past a unit's endAt (match over) aren't flagged
  * as missing; read-only units (the other group's ball) show text, not inputs. */
-function cardTable(r, holes, units) {
+function cardTable(r, holes, units, nine) {
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
     for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
@@ -867,8 +871,8 @@ function cardTable(r, holes, units) {
     });
     return head + par + si + rows;
   };
-  let table = `<div class="cardscroll"><table class="scgrid">${section(0, 9, 'Out')}`;
-  if (holes.length > 9) table += section(9, 18, 'In');
+  let table = `<div class="cardscroll"><table class="scgrid">${nine === 'back' && holes.length > 9 ? '' : section(0, 9, 'Out')}`;
+  if (holes.length > 9 && nine !== 'front') table += section(9, 18, 'In');
   table += `</table></div>`;
   return table;
 }
@@ -911,6 +915,7 @@ function roundUnits(r) {
 /* read-only hole-by-hole grid (marks) for a set of units — shared by the
  * per-player expand and any full-card view. */
 function cardGrid(r, holes, units) {
+  const nine = r && holes.length === 18 ? r.nine : null;
   const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
@@ -933,8 +938,8 @@ function cardGrid(r, holes, units) {
     });
     return head + par + rows;
   };
-  let table = `<div class="cardscroll"><table class="scgrid">${section(0, Math.min(9, holes.length), 'Out')}`;
-  if (holes.length > 9) table += section(9, holes.length, 'In');
+  let table = `<div class="cardscroll"><table class="scgrid">${nine === 'back' ? '' : section(0, Math.min(9, holes.length), 'Out')}`;
+  if (holes.length > 9 && nine !== 'front') table += section(9, holes.length, 'In');
   return table + `</table></div>`;
 }
 
@@ -948,13 +953,17 @@ function scorecardSummary(r) {
   const units = roundUnits(r);
   if (!units.length) return '';
   const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
-  const stat = (u) => { let g = 0, pp = 0, thru = 0; holes.forEach((h, i) => { const v = val(u, i); if (v != null) { g += v; pp += h.par; thru++; } }); return { g, pp, thru, tp: g - pp, started: thru > 0 }; };
+  // only the holes this round plays (one nine on a rain day); "thru" is the
+  // last hole number played, and F once every hole of the round is in
+  const span = roundHoles(r, holes.length);
+  const size = span.last - span.first + 1;
+  const stat = (u) => { let g = 0, pp = 0, cnt = 0, thru = 0; holes.forEach((h, i) => { if (i < span.first - 1 || i > span.last - 1) return; const v = val(u, i); if (v != null) { g += v; pp += h.par; cnt++; thru = i + 1; } }); return { g, pp, thru, cnt, tp: g - pp, started: cnt > 0 }; };
   if (!units.some((u) => stat(u).started)) return ''; // nothing scored yet
   const rows = units.map((u, idx) => {
     const s = stat(u);
     const key = 'sc-' + r.id + '-' + idx;
     const tot = s.started
-      ? `<span class="sc-thru muted">${s.thru === holes.length ? 'F' : 'thru ' + s.thru}</span><span class="sc-g">${s.g}</span><span class="topar ${toParClass(s.tp)}">${fmtToPar(s.tp)}</span>`
+      ? `<span class="sc-thru muted">${s.cnt === size ? 'F' : 'thru ' + s.thru}</span><span class="sc-g">${s.g}</span><span class="topar ${toParClass(s.tp)}">${fmtToPar(s.tp)}</span>`
       : '<span class="muted">— yet to tee off</span>';
     return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} class="sc-item">
       <summary class="sc-row"><span class="sc-nm">${sdot(u.sdotId)} ${esc(u.name)}</span><span class="sc-tot">${tot}</span></summary>
@@ -1355,10 +1364,16 @@ function setupRounds() {
       ${(() => {
         // Sunset: every match in the round ends after this hole (a match's own
         // setting on the scoring screen wins over it).
-        const cur = r.lastHole ? Math.min(nholes, Number(r.lastHole)) : nholes;
+        const sp = roundHoles(r, nholes);
+        const cur = r.lastHole ? Math.max(sp.first, Math.min(sp.last, Number(r.lastHole))) : sp.last;
         let o = '';
-        for (let n = nholes; n >= 1; n--) o += `<option value="${n === nholes ? '' : n}" ${cur === n ? 'selected' : ''}>${n === nholes ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
-        return `<div class="grid2" style="margin-bottom:6px;align-items:end">
+        for (let n = sp.last; n >= sp.first; n--) o += `<option value="${n === sp.last ? '' : n}" ${cur === n ? 'selected' : ''}>${n === sp.last ? 'Hole ' + n + (sp.last - sp.first < 17 ? ' (full nine)' : ' (full round)') : 'Hole ' + n}</option>`;
+        const nineSel = nholes === 18 ? `<div class="field"><label>Holes played</label><select data-action="round-nine" data-id="${id}">
+            <option value="" ${!r.nine ? 'selected' : ''}>All 18</option>
+            <option value="front" ${r.nine === 'front' ? 'selected' : ''}>Front 9 (1–9)</option>
+            <option value="back" ${r.nine === 'back' ? 'selected' : ''}>Back 9 (10–18)</option>
+          </select></div>` : '';
+        return `${nineSel ? `<div class="grid2" style="margin-bottom:6px">${nineSel}</div>` : ''}<div class="grid2" style="margin-bottom:6px;align-items:end">
           <div class="field"><label>Matches end after</label><select data-action="round-lasthole" data-id="${id}">${o}</select></div>
           <div class="field"><button class="btn secondary small" data-action="call-round" data-rid="${id}">End unfinished matches now</button></div>
         </div>
@@ -1857,6 +1872,7 @@ app.addEventListener('change', (e) => {
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
     'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
     'round-tee': () => Store.update((s) => { s.rounds[t.dataset.id].defaultTeeId = v; }),
+    'round-nine': () => Store.update((s) => { const r = s.rounds[t.dataset.id]; if (!r) return; if (v === 'front' || v === 'back') r.nine = v; else delete r.nine; delete r.lastHole; }),
     'round-lasthole': () => Store.update((s) => { const r = s.rounds[t.dataset.id]; if (!r) return; if (v) r.lastHole = Number(v); else delete r.lastHole; }),
     'match-lasthole': () => setMatchLastHole(t.dataset.rid, t.dataset.pid, Number(v)),
     'round-tee-override': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.teeOverrides = r.teeOverrides || {}; if (v) r.teeOverrides[t.dataset.pid] = v; else delete r.teeOverrides[t.dataset.pid]; }),
