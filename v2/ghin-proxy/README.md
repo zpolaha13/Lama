@@ -36,7 +36,30 @@ browser or the repo.
 > use. They aren't documented and can change without notice. If it stops
 > working, see *Troubleshooting* below.
 
-## Deploy (one time, ~10 min, free)
+## Deploy from the Cloudflare website (no command line, ~10 min, free)
+
+Easiest on a computer.
+
+1. Sign up or log in at <https://dash.cloudflare.com/sign-up> (the free plan is plenty).
+2. **Workers & Pages → Create → Create Worker.** Name it `ghin-proxy`, then **Deploy**
+   (it starts as "Hello World").
+3. **Edit code.** Delete everything, paste in all of `worker.js` (on GitHub, open the
+   file and use **Copy raw file**), then **Deploy**.
+4. **Settings → Variables and Secrets → Add**, three times:
+   - Type **Secret**, name `GHIN_USER`, value: your GHIN email or GHIN number
+   - Type **Secret**, name `GHIN_PASSWORD`, value: your GHIN password
+   - Type **Text**, name `ALLOW_ORIGIN`, value: `https://zpolaha13.github.io`
+
+   Then **Deploy**. Your GHIN login stays in Cloudflare; it never reaches the app,
+   the repo or the chat.
+5. Copy the worker's address (`https://ghin-proxy.<your-subdomain>.workers.dev`).
+   It isn't secret. Put it in `GHIN_PROXY_URL` in `v2/js/config.js` and redeploy the
+   site; the Players tab then shows **⚡ GHIN connected** and no token box.
+
+Quick test in a browser: `<address>/?ghin=<a GHIN number>` should show that
+golfer's index, and `<address>/?last=Smith&state=NC` a list of golfers.
+
+## Deploy with Wrangler (command line)
 
 1. **Install Wrangler** (Cloudflare's CLI) and log in:
    ```bash
@@ -72,9 +95,13 @@ browser or the repo.
 
 ## How the app uses it
 
-The app calls `GET <GHIN_PROXY_URL>?ghin=NUMBER` and reads `index` from the JSON.
-The index is then filled into that player's **Hcp** field — and stays editable,
-so you can always override it by hand.
+- **↻ Get / ↻ Get all:** `GET <GHIN_PROXY_URL>?ghin=NUMBER` → `{ index, name, ghin, club }`.
+  The index fills that player's **Index** field and stays editable.
+- **🔎 Find / 🔎 Add from GHIN:** `GET <GHIN_PROXY_URL>?last=Haley&first=Dave&state=NC` →
+  `{ golfers: [{ ghin, name, club, state, index }] }` (active golfers, up to 25).
+  Pick one to fill a player's GHIN # and Index, or to add them as a new player.
+  Nicknames (Jimbo, Dave) often don't match GHIN's first names, so with no hit
+  the app searches the last name alone and lists everyone.
 
 ## Troubleshooting
 

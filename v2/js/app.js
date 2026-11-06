@@ -7,7 +7,7 @@
 import * as Store from './store.js';
 import { isFirebaseConfigured, GHIN_PROXY_URL } from './config.js';
 import * as Eng from './engine/golf.js';
-import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound, isTeamBall, matchLastHole } from './engine/standings.js';
+import { computeStandings, resolveRound, resolvePairingMatch, chFor, playerRoundLine, matchHandicaps, ruleHandicap, resolveTeeId, effectiveCH, teamScrambleRound, isTeamBall, matchLastHole, roundHoles } from './engine/standings.js';
 import { sampleTournament, FORMAT_INFO } from './seed.js';
 import { toCSV, fromCSV } from './engine/csv.js';
 
@@ -276,7 +276,21 @@ function actionCard(stand) {
   const me = meId() ? player(meId()) : null;
   // find my next/active match
   let lbl = 'Tournament', msg = '', cta = '';
-  const liveR = stand.rounds.find((r) => r.status === 'live');
+  // Cup decided: once every round is final, show the result instead of a
+  // stale "Up next"; while matches are still being played, keep the scoring
+  // card and add the clinch line on top.
+  const champ = stand.clinched && squad(stand.clinched) ? squad(stand.clinched) : null;
+  const other = champ ? Object.keys(stand.cup).find((x) => x !== stand.clinched) : null;
+  const champLine = champ ? `🏆 <b>${esc(champ.name)}</b> ${stand.rounds.every((r) => r.status === 'final') ? 'wins' : 'has clinched'} the Cup, ${ptsTxt(stand.cup[stand.clinched])} to ${ptsTxt(other ? stand.cup[other] : 0)}.` : '';
+  if (champ && stand.rounds.every((r) => r.status === 'final')) {
+    return `<div class="action"><div class="lbl">Final</div><div class="msg">${champLine}</div><button class="btn" data-action="tab" data-tab="standings">See the final standings</button></div>`;
+  }
+  // The round to point at: the LATEST live round (an earlier round with one
+  // forgotten hole shouldn't hijack everyone's Home), preferring one where my
+  // own match is still going; else the next round to start.
+  const live = stand.rounds.filter((r) => r.status === 'live');
+  const inMine = (rr) => me && rr.matches.some((x) => x.m.result === 'IP' && [...(x.pairing.teamA || []), ...(x.pairing.teamB || [])].includes(me.id));
+  const liveR = live.slice().reverse().find(inMine) || live[live.length - 1];
   const nextR = stand.rounds.find((r) => r.status === 'upcoming');
   if (me) {
     const target = liveR || nextR || stand.rounds[stand.rounds.length - 1];
@@ -313,6 +327,7 @@ function actionCard(stand) {
     cta = `<button class="btn" data-action="tab" data-tab="mycard">Pick my player</button>`;
   }
   if (!msg) { msg = 'Follow the live standings and round leaderboards.'; cta = `<button class="btn" data-action="tab" data-tab="standings">View standings</button>`; }
+  if (champLine) msg = champLine + '<br>' + msg;
   return `<div class="action"><div class="lbl">${lbl}</div><div class="msg">${msg}</div>${cta}</div>`;
 }
 
@@ -346,9 +361,27 @@ function weightToggle(stand) {
   return `<div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div><div style="font-weight:700;font-size:14px">Scoring: ${mode === 'normalized' ? 'Equal-weight rounds' : 'True points'}</div>
     <div class="muted" style="font-size:12px">${detail}</div></div>
-    <button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>
+    ${setupUnlocked() ? `<button class="btn secondary small" data-action="weight-mode">${mode === 'normalized' ? 'Use true points' : 'Equal-weight'}</button>` : ''}
   </div>`;
 }
+
+/* Has anything been scored yet? Used to warn before edits that would
+ * re-score or orphan scores already in. */
+function roundScored(r) {
+  if (!r) return false;
+  const has = (o) => o && Object.values(o).some((v) => (v != null && typeof v === 'object' ? has(v) : v != null));
+  return has(r.scores) || has(r.teamScores);
+}
+function matchScored(r, p) {
+  if (!r || !p) return false;
+  const ids = [...(p.teamA || []), ...(p.teamB || [])];
+  const has = (o) => o && Object.values(o).some((v) => (v != null && typeof v === 'object' ? has(v) : v != null));
+  return ids.some((pid) => has(r.scores && r.scores[pid])) || has(r.teamScores && r.teamScores[p.id]);
+}
+function playerScored(pid) {
+  return roundIds().some((id) => { const r = round(id); return (r.pairings || []).some((p) => [...(p.teamA || []), ...(p.teamB || [])].includes(pid) && matchScored(r, p)); });
+}
+function anyScored() { return roundIds().some((id) => roundScored(round(id))); }
 
 function breakdownCard(stand, full) {
   const ids = squadIds();
@@ -594,7 +627,7 @@ function matchList(rr) {
       pt = `${fmt(res.pts.a)} – ${fmt(res.pts.b)}`;
     } else if (res.m.result !== 'IP' && res.pts) pt = `${ptsTxt(res.pts.a)} – ${ptsTxt(res.pts.b)}`; // e.g. 2 – 0, 1½ – 1½
     else pt = res.m.played ? 'in play' : '';
-    const short = res.shortened ? `<div class="muted" style="font-size:11px">${res.lastHole}-hole match</div>` : '';
+    const short = res.shortened ? `<div class="muted" style="font-size:11px">ended after hole ${res.lastHole}</div>` : '';
     return `<div class="match">
       <div class="sides">
         <div class="side ${bUp ? 'dim' : ''}">${sdot(res.squadA)} ${names(res.pairing.teamA)}</div>
@@ -637,42 +670,45 @@ function viewScore() {
   if (!pairings.length) return '<div class="card"><div class="empty">No matchups in this round.</div></div>';
   if (!ui.scorePairingId || !pairings.find((p) => p.id === ui.scorePairingId)) ui.scorePairingId = defaultPairing(r).id;
   const pairing = pairings.find((p) => p.id === ui.scorePairingId);
-  const h = Math.max(0, Math.min(ui.holeIdx, c.holes.length - 1));
+  const span = roundHoles(r, c.holes.length); // e.g. holes 10-18 for a back-nine round
+  const h = Math.max(span.first - 1, Math.min(ui.holeIdx, span.last - 1));
   ui.holeIdx = h;
   const hole = c.holes[h];
+  const nineTag = r.nine === 'front' || r.nine === 'back' ? (r.nine === 'front' ? 'FRONT 9' : 'BACK 9') : '';
 
-  const pairingOpts = pairings.map((p, i) => `<option value="${p.id}" ${p.id === ui.scorePairingId ? 'selected' : ''}>${matchupLabel(p, i)}</option>`).join('');
+  // Singles: a group of 4 plays two matches, so by default the scorer gets the
+  // whole group on one screen instead of flipping the Matchup menu every hole.
+  const groups = scoreGroups(r);
+  const canGroup = r.format === 'singles' && groups.some((g) => g.length > 1);
+  const groupMode = canGroup && !ui.scoreOneMatch;
+  const group = groupMode ? (groups.find((g) => g.some((p) => p.id === ui.scorePairingId)) || groups[0]) : [pairing];
+  const pairingOpts = groupMode
+    ? groups.map((g, i) => `<option value="${g[0].id}" ${g === group ? 'selected' : ''}>Group ${i + 1}: ${g.map((p) => matchupShort(p)).join(' · ')}</option>`).join('')
+    : pairings.map((p, i) => `<option value="${p.id}" ${p.id === ui.scorePairingId ? 'selected' : ''}>${matchupLabel(p, i)}</option>`).join('');
 
   // live match status
   const res = resolvePairingMatch(S(), r, pairing);
   const sa = squad(res.squadA), sb = squad(res.squadB);
   const statusTxt = Eng.matchText(res.m, sa ? sa.name : 'A', sb ? sb.name : 'B');
 
-  let units;
-  if (isTeamBall(r.format)) {
-    units = ['A', 'B'].map((side) => {
-      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
-      const sid = side === 'A' ? res.squadA : res.squadB;
-      const ch = side === 'A' ? res.chA : res.chB;
-      const val = getTeam(r, pairing.id, side, h);
-      return unitRow({ rid: r.id, target: `team:${pairing.id}:${side}`, name: (squad(sid) ? squad(sid).name : side) + ' — ' + ids.map((x) => player(x) ? player(x).name : '?').join(' / '), sdotId: sid, ch, val, hole, holes: c.holes.length });
-    }).join('');
-  } else {
-    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
-    const hc = matchHandicaps(S(), r, pairing);
-    units = ids.map((pid) => {
-      const p = player(pid);
-      const ch = hc.byPlayer[pid] || 0;
-      const val = getScore(r, pid, h);
-      return unitRow({ rid: r.id, target: `player:${pid}`, name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch, val, hole, holes: c.holes.length, tee: p ? teeNameFor(p, r) : '' });
-    }).join('');
-  }
+  const unitList = scoreUnits(r, c, group);
+  const units = unitList.map((u) => (u.readOnly
+    ? readOnlyUnitRow(u, h, c.holes.length)
+    : unitRow({ rid: r.id, target: u.target, name: u.name, sdotId: u.sdotId, ch: u.ch, val: u.get(h), hole, holes: c.holes.length, tee: u.tee }))).join('');
 
   // count missing scores so we can warn that the round can't complete
-  const missing = countMissing(r, pairing, c);
-  const finalLine = res.m.result === 'IP'
-    ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : esc(statusTxt))
-    : '<b>✓ ' + esc(statusTxt) + ' — complete</b>';
+  // (only holes the match still needs, and only rows this phone scores)
+  const missing = countMissing(unitList);
+  const allDone = group.every((p) => resolvePairingMatch(S(), r, p).m.result !== 'IP');
+  const finalLine = groupMode
+    ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : (allDone ? '<b>✓ Both matches complete</b>' : 'All scores in so far'))
+    : res.m.result === 'IP'
+      ? (missing > 0 ? `<span class="muted">${missing} score${missing === 1 ? '' : 's'} still missing</span>` : esc(statusTxt))
+      : '<b>✓ ' + esc(statusTxt) + ' — complete</b>';
+  const groupToggle = canGroup
+    ? `<div style="margin:-2px 0 8px"><button class="btn ghost small" data-action="score-one-match">${groupMode ? 'Score just one match' : 'Score the whole group (both matches)'}</button></div>`
+    : '';
+  const banners = group.map((p) => liveMatchBanner(r, p.id === pairing.id ? res : resolvePairingMatch(S(), r, p))).join('');
 
   const modeSeg = `<div class="seg" style="margin:0 0 12px">
     <button data-action="score-mode" data-mode="hole" class="${ui.scoreMode !== 'card' ? 'active' : ''}">⛳ One hole</button>
@@ -681,22 +717,23 @@ function viewScore() {
 
   const head = `<button class="btn secondary small" data-action="back" style="margin-bottom:12px">← ${esc(r.name)}</button>
     <div class="card">
-      <div class="field" style="margin-bottom:8px"><label>Matchup</label><select data-action="pick-pairing">${pairingOpts}</select></div>
-      ${liveMatchBanner(r, res)}
-      ${lastHoleControl(r, pairing, res, c.holes.length)}
+      <div class="field" style="margin-bottom:8px"><label>${groupMode ? 'Group' : 'Matchup'}</label><select data-action="pick-pairing">${pairingOpts}</select></div>
+      ${groupToggle}
+      ${banners}
+      ${groupMode ? '' : lastHoleControl(r, pairing, res, c.holes.length)}
       ${modeSeg}`;
 
   if (ui.scoreMode === 'card') {
-    return head + scoreCard(r, pairing, c) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
+    return head + cardTable(r, c.holes, unitList, r.nine) + `<div class="tip" style="margin-top:4px">${finalLine}</div>
       <div class="muted" style="font-size:12px;margin-top:8px">Tap any cell to type a score. ${missing > 0 ? 'Highlighted cells are blank — fill them to finish the round.' : 'All holes in — round result is final.'}</div>
     </div>`;
   }
 
   return head + `
       <div class="hole-nav">
-        <button data-action="hole" data-dir="-1" ${h === 0 ? 'disabled' : ''}>‹</button>
-        <div class="holeinfo"><div class="h num">HOLE ${h + 1} of ${c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
-        <button data-action="hole" data-dir="1" ${h === c.holes.length - 1 ? 'disabled' : ''}>›</button>
+        <button data-action="hole" data-dir="-1" ${h === span.first - 1 ? 'disabled' : ''}>‹</button>
+        <div class="holeinfo"><div class="h num">HOLE ${h + 1} ${nineTag ? '· ' + nineTag : 'of ' + c.holes.length} · PAR ${hole.par} · SI ${hole.si}</div><div class="pn num">${h + 1}</div></div>
+        <button data-action="hole" data-dir="1" ${h === span.last - 1 ? 'disabled' : ''}>›</button>
       </div>
       ${units}
       <div class="tip" style="margin-top:8px">${finalLine}</div>
@@ -713,7 +750,8 @@ function lastHoleControl(r, pairing, res, full) {
   if (!res.shortened && res.m.result !== 'IP') return '';
   const cur = res.lastHole || full;
   let opts = '';
-  for (let n = full; n >= 1; n--) opts += `<option value="${n}" ${cur === n ? 'selected' : ''}>${n === full ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
+  const top = res.nineLast || full, bottom = res.firstHole || 1;
+  for (let n = top; n >= bottom; n--) opts += `<option value="${n}" ${cur === n ? 'selected' : ''}>${n === top ? 'Hole ' + n + (top - bottom < 17 ? ' (full nine)' : ' (full round)') : 'Hole ' + n}</option>`;
   const canCall = res.m.result === 'IP' && res.bothFinished >= 1 && res.bothFinished < cur;
   const body = `<div class="field" style="margin:8px 0 4px"><label>Match ends after</label><select data-action="match-lasthole" data-rid="${r.id}" data-pid="${pairing.id}">${opts}</select></div>
     ${canCall ? `<button class="btn secondary small" data-action="call-match" data-rid="${r.id}" data-pid="${pairing.id}" data-n="${res.bothFinished}">End it after hole ${res.bothFinished} (last hole both sides finished)</button>` : ''}
@@ -723,43 +761,89 @@ function lastHoleControl(r, pairing, res, full) {
   return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} style="margin:0 0 12px"><summary class="muted" style="cursor:pointer;font-size:13px">Losing the light? Shorten this match</summary>${body}</details>`;
 }
 
-/* count holes with a missing score across the pairing (so the user can find gaps).
- * Holes after a shortened match's last hole don't count as missing. */
-function countMissing(r, pairing, c) {
-  const n = matchLastHole(r, pairing, c.holes.length);
+/* count holes with a missing score on the rows this phone scores (so the user
+ * can find gaps). Holes after a match is over (closed out, or past a sunset
+ * last hole) don't count: nobody needs to post them. */
+function countMissing(units) {
   let miss = 0;
-  if (isTeamBall(r.format)) {
-    for (let h = 0; h < n; h++) { if (getTeam(r, pairing.id, 'A', h) == null) miss++; if (getTeam(r, pairing.id, 'B', h) == null) miss++; }
-  } else {
-    const ids = [...(pairing.teamA || []), ...(pairing.teamB || [])];
-    for (let h = 0; h < n; h++) ids.forEach((pid) => { if (getScore(r, pid, h) == null) miss++; });
-  }
+  units.forEach((u) => { if (u.readOnly) return; for (let h = u.startAt || 0; h < u.endAt; h++) if (u.get(h) == null) miss++; });
   return miss;
 }
 
-/* full 18-hole editable scorecard for the selected matchup */
-function scoreCard(r, pairing, c) {
-  const holes = c.holes;
-  let units;
-  if (isTeamBall(r.format)) {
-    const res = resolvePairingMatch(S(), r, pairing);
-    units = ['A', 'B'].map((side) => {
-      const ids = side === 'A' ? pairing.teamA : pairing.teamB;
-      const sid = side === 'A' ? res.squadA : res.squadB;
-      return { name: (squad(sid) ? squad(sid).name : side), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h) };
+/* Singles groups: which matches share a tee time, so one scorer can enter the
+ * whole group. From tee times when set, otherwise matches are taken in pairs
+ * as listed (1+2, 3+4, …). Other formats: one match per screen. */
+function scoreGroups(r) {
+  const ps = r.pairings || [];
+  if (r.format !== 'singles') return ps.map((p) => [p]);
+  const tts = (r.teeTimes || []).filter((t) => (t.players || []).length);
+  if (tts.length) {
+    const used = new Set(); const out = [];
+    tts.forEach((t) => {
+      const g = ps.filter((p) => !used.has(p.id) && [...(p.teamA || []), ...(p.teamB || [])].every((pid) => t.players.includes(pid)));
+      g.forEach((p) => used.add(p.id));
+      if (g.length) out.push(g);
     });
-  } else {
-    const hc = matchHandicaps(S(), r, pairing);
-    units = [...(pairing.teamA || []), ...(pairing.teamB || [])].map((pid) => {
-      const p = player(pid);
-      return { name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h) };
-    });
+    ps.forEach((p) => { if (!used.has(p.id)) out.push([p]); });
+    return out;
   }
-  return cardTable(r, holes, units);
+  const out = [];
+  for (let i = 0; i < ps.length; i += 2) out.push(ps.slice(i, i + 2));
+  return out;
+}
+function matchupShort(p) {
+  const nm = (ids) => (ids || []).map((x) => (player(x) ? player(x).name : '?')).join('/');
+  return nm(p.teamA) + ' v ' + nm(p.teamB);
 }
 
-/* shared full-card table builder: units = [{name, sdotId, ch, target, get(h)}] */
-function cardTable(r, holes, units) {
+/* The score rows for one screen: each player (per-player formats) or one team
+ * ball per side. A 4-man scramble's sides play in DIFFERENT groups, so when
+ * this phone's player is on one side, the other side is read-only (a stray tap
+ * would overwrite the other group's real score). endAt = holes the match
+ * still needs (closeout or sunset), for missing-score counts and highlights. */
+function scoreUnits(r, c, pairings) {
+  const me = meId();
+  const names = (ids) => (ids || []).map((x) => (player(x) ? player(x).name : '?')).join(' / ');
+  const units = [];
+  pairings.forEach((pairing) => {
+    const res = resolvePairingMatch(S(), r, pairing);
+    const endAt = res.endHole || c.holes.length; // closed out, sunset or end of the nine
+    const startAt = (res.firstHole || 1) - 1;       // a back-nine round starts at hole 10
+    if (isTeamBall(r.format)) {
+      const cross = (pairing.teamA || []).length + (pairing.teamB || []).length > 4;
+      const mySide = me && (pairing.teamA || []).includes(me) ? 'A' : (me && (pairing.teamB || []).includes(me) ? 'B' : null);
+      const onlyMine = !!(cross && mySide && !ui.scoreBothSides);
+      (mySide === 'B' ? ['B', 'A'] : ['A', 'B']).forEach((side) => {
+        const ids = side === 'A' ? pairing.teamA : pairing.teamB;
+        const sid = side === 'A' ? res.squadA : res.squadB;
+        units.push({ readOnly: onlyMine && side !== mySide, name: (squad(sid) ? squad(sid).name : side) + ' — ' + names(ids), sdotId: sid, ch: side === 'A' ? res.chA : res.chB, target: `team:${pairing.id}:${side}`, get: (h) => getTeam(r, pairing.id, side, h), endAt, startAt });
+      });
+    } else {
+      const hc = matchHandicaps(S(), r, pairing);
+      [...(pairing.teamA || []), ...(pairing.teamB || [])].forEach((pid) => {
+        const p = player(pid);
+        units.push({ name: p ? p.name : '?', sdotId: p ? p.squadId : null, ch: hc.byPlayer[pid] || 0, target: `player:${pid}`, get: (h) => getScore(r, pid, h), endAt, startAt, tee: p ? teeNameFor(p, r) : '' });
+      });
+    }
+  });
+  return units;
+}
+
+/* the other group's ball in a cross-group match: shown, not editable here */
+function readOnlyUnitRow(u, h, holes) {
+  let thru = 0;
+  for (let i = 0; i < holes; i++) if (u.get(i) != null) thru = i + 1;
+  const v = u.get(h);
+  return `<div class="player-score ro">
+    <div class="top"><div class="who">${sdot(u.sdotId)} ${esc(u.name)}</div><div class="net num">${v != null ? 'scored ' + v + ' · ' : ''}${thru ? 'thru ' + thru : 'not started'}</div></div>
+    <div class="muted" style="font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">Their own group's scorer enters this ball. <button class="btn ghost small" data-action="score-both-sides">Enter it here too</button></div>
+  </div>`;
+}
+
+/* shared full-card table builder: units = [{name, sdotId, ch, target, get(h),
+ * endAt?, readOnly?}]. Holes past a unit's endAt (match over) aren't flagged
+ * as missing; read-only units (the other group's ball) show text, not inputs. */
+function cardTable(r, holes, units, nine) {
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
     for (let i = start; i < end; i++) head += `<th>${i + 1}</th>`;
@@ -776,15 +860,19 @@ function cardTable(r, holes, units) {
         const strokes = Eng.strokesOnHole(u.ch, holes[i].si, holes.length);
         const has = v != null && v !== '' && !isNaN(v);
         if (has) { tot += Number(v); any = true; }
-        row += `<td class="cardtd"><input class="cardcell ${has ? '' : 'miss'}" type="number" inputmode="numeric" value="${has ? v : ''}" data-action="card-score" data-rid="${r.id}" data-target="${u.target}" data-h="${i}">${strokes > 0 ? `<span class="cdots">${'•'.repeat(strokes)}</span>` : ''}</td>`;
+        const done = u.endAt != null && i >= u.endAt; // match already over
+        const dots = strokes > 0 ? `<span class="cdots">${'•'.repeat(strokes)}</span>` : '';
+        row += u.readOnly
+          ? `<td class="cardtd"><span class="cardcell ro">${has ? v : ''}</span>${dots}</td>`
+          : `<td class="cardtd"><input class="cardcell ${has ? '' : (done ? 'bye' : 'miss')}" type="number" inputmode="numeric" min="1" max="15" value="${has ? v : ''}" data-action="card-score" data-rid="${r.id}" data-target="${u.target}" data-h="${i}">${dots}</td>`;
       }
       row += `<td class="num"><b>${any ? tot : ''}</b></td></tr>`;
       rows += row;
     });
     return head + par + si + rows;
   };
-  let table = `<div class="cardscroll"><table class="scgrid">${section(0, 9, 'Out')}`;
-  if (holes.length > 9) table += section(9, 18, 'In');
+  let table = `<div class="cardscroll"><table class="scgrid">${nine === 'back' && holes.length > 9 ? '' : section(0, 9, 'Out')}`;
+  if (holes.length > 9 && nine !== 'front') table += section(9, 18, 'In');
   table += `</table></div>`;
   return table;
 }
@@ -827,6 +915,7 @@ function roundUnits(r) {
 /* read-only hole-by-hole grid (marks) for a set of units — shared by the
  * per-player expand and any full-card view. */
 function cardGrid(r, holes, units) {
+  const nine = r && holes.length === 18 ? r.nine : null;
   const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
   const section = (start, end, label) => {
     let head = `<tr><th class="cardname">Hole</th>`;
@@ -849,8 +938,8 @@ function cardGrid(r, holes, units) {
     });
     return head + par + rows;
   };
-  let table = `<div class="cardscroll"><table class="scgrid">${section(0, Math.min(9, holes.length), 'Out')}`;
-  if (holes.length > 9) table += section(9, holes.length, 'In');
+  let table = `<div class="cardscroll"><table class="scgrid">${nine === 'back' ? '' : section(0, Math.min(9, holes.length), 'Out')}`;
+  if (holes.length > 9 && nine !== 'front') table += section(9, holes.length, 'In');
   return table + `</table></div>`;
 }
 
@@ -864,13 +953,17 @@ function scorecardSummary(r) {
   const units = roundUnits(r);
   if (!units.length) return '';
   const val = (u, i) => { const v = u.get(i); return (v != null && v !== '' && !isNaN(v)) ? Number(v) : null; };
-  const stat = (u) => { let g = 0, pp = 0, thru = 0; holes.forEach((h, i) => { const v = val(u, i); if (v != null) { g += v; pp += h.par; thru++; } }); return { g, pp, thru, tp: g - pp, started: thru > 0 }; };
+  // only the holes this round plays (one nine on a rain day); "thru" is the
+  // last hole number played, and F once every hole of the round is in
+  const span = roundHoles(r, holes.length);
+  const size = span.last - span.first + 1;
+  const stat = (u) => { let g = 0, pp = 0, cnt = 0, thru = 0; holes.forEach((h, i) => { if (i < span.first - 1 || i > span.last - 1) return; const v = val(u, i); if (v != null) { g += v; pp += h.par; cnt++; thru = i + 1; } }); return { g, pp, thru, cnt, tp: g - pp, started: cnt > 0 }; };
   if (!units.some((u) => stat(u).started)) return ''; // nothing scored yet
   const rows = units.map((u, idx) => {
     const s = stat(u);
     const key = 'sc-' + r.id + '-' + idx;
     const tot = s.started
-      ? `<span class="sc-thru muted">${s.thru === holes.length ? 'F' : 'thru ' + s.thru}</span><span class="sc-g">${s.g}</span><span class="topar ${toParClass(s.tp)}">${fmtToPar(s.tp)}</span>`
+      ? `<span class="sc-thru muted">${s.cnt === size ? 'F' : 'thru ' + s.thru}</span><span class="sc-g">${s.g}</span><span class="topar ${toParClass(s.tp)}">${fmtToPar(s.tp)}</span>`
       : '<span class="muted">— yet to tee off</span>';
     return `<details data-dk="${key}" ${ui.openDetails.has(key) ? 'open' : ''} class="sc-item">
       <summary class="sc-row"><span class="sc-nm">${sdot(u.sdotId)} ${esc(u.name)}</span><span class="sc-tot">${tot}</span></summary>
@@ -942,7 +1035,7 @@ function unitRow({ rid, target, name, sdotId, ch, val, hole, holes, tee }) {
   return `<div class="player-score">
     <div class="top">
       <div class="who">${sdot(sdotId)} ${esc(name)} ${dots}</div>
-      <div class="net num">${tee ? esc(tee) + ' · ' : ''}CH ${ch}${net != null ? ` · net ${net}` : ''}</div>
+      <div class="net num">${tee ? esc(tee) + ' · ' : ''}${ch > 0 ? 'gets ' + ch : (ch < 0 ? 'gives ' + (-ch) : 'no strokes')}${net != null ? ` · net ${net}` : ''}${val != null ? ` <button class="clr" data-action="clear-score" data-rid="${rid}" data-target="${target}" aria-label="Clear this score" title="Clear this score">✕</button>` : ''}</div>
     </div>
     <div class="stepper">
       <button class="minus" data-action="step" data-rid="${rid}" data-target="${target}" data-h="${hole._i ?? ''}" data-dir="-1">−</button>
@@ -1189,7 +1282,11 @@ function setupPlayers() {
   const sortBtn = (k, label) => `<button class="seg-btn ${sort.key === k ? 'active' : ''}" data-action="sort-players" data-key="${k}">${label}${caret(k)}</button>`;
   const loadingMap = ui.ghinLoading || {};
   const tokenSet = !!getGhinToken();
-  const ghinBox = `<details class="ghin-auto" data-dk="ghin-auto" ${ui.openDetails.has('ghin-auto') ? 'open' : ''}>
+  // With the GHIN helper deployed (GHIN_PROXY_URL) nobody needs a token.
+  const ghinBox = GHIN_PROXY_URL ? `<div class="ghin-auto" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px">
+      <span><b>⚡ GHIN connected</b> <span class="muted" style="font-size:12px">· 🔎 Find by name, ↻ Get to refresh</span></span>
+      <button class="btn secondary small" data-action="ghin-get-all">↻ Get all</button>
+    </div>` : `<details class="ghin-auto" data-dk="ghin-auto" ${ui.openDetails.has('ghin-auto') ? 'open' : ''}>
     <summary>⚡ GHIN auto-fill ${tokenSet ? '<span class="ok-tag">token set ✓</span>' : '<span class="muted">— paste a token</span>'}</summary>
     <div class="ghin-auto-body">
       <input class="ghin-token-in" type="password" placeholder="Paste GHIN token (Bearer …)" data-action="ghin-token" value="${esc(getGhinToken())}">
@@ -1210,11 +1307,13 @@ function setupPlayers() {
       <div class="pcard-r2">
         <div class="pf"><label>Index</label><input class="hcp-in" type="number" step="0.1" inputmode="decimal" data-action="player-index" data-id="${id}" value="${p.index}"></div>
         <div class="pf pf-ghin"><label>GHIN #</label><input class="ghin-in" inputmode="numeric" placeholder="—" data-action="player-ghin" data-id="${id}" value="${esc(p.ghin || '')}"></div>
-        <button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>
+        ${String(p.ghin || '').replace(/\D/g, '')
+          ? `<button class="btn secondary small ghin-btn" data-action="ghin-refresh" data-id="${id}" ${busy ? 'disabled' : ''} title="Fetch handicap index from GHIN">${busy ? '…' : '↻ Get'}</button>`
+          : `<button class="btn secondary small ghin-btn" data-action="ghin-find" data-id="${id}" title="Look this player up in GHIN by name">🔎 Find</button>`}
       </div>
     </div>`; }).join('')}
-    <div class="muted" style="font-size:12px;margin-top:4px">Tap <b>↻ Get</b> to pull a player's Index from GHIN (needs a token in the box above), or edit any Index by hand. No token? The <b>GHIN app → Golfer Lookup</b> shows it instantly.</div>
-    <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button></div>
+    <div class="muted" style="font-size:12px;margin-top:4px">No GHIN # yet? Tap <b>🔎 Find</b> to look the player up by name and fill in their GHIN # and Index. With a GHIN #, <b>↻ Get</b> refreshes the Index.${GHIN_PROXY_URL ? '' : ' Both need a token in the box above.'} You can always type an Index by hand.</div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn secondary small" data-action="add-player">+ Add player</button><button class="btn secondary small" data-action="ghin-add">🔎 Add from GHIN</button></div>
   </div>`;
   return html;
 }
@@ -1265,10 +1364,16 @@ function setupRounds() {
       ${(() => {
         // Sunset: every match in the round ends after this hole (a match's own
         // setting on the scoring screen wins over it).
-        const cur = r.lastHole ? Math.min(nholes, Number(r.lastHole)) : nholes;
+        const sp = roundHoles(r, nholes);
+        const cur = r.lastHole ? Math.max(sp.first, Math.min(sp.last, Number(r.lastHole))) : sp.last;
         let o = '';
-        for (let n = nholes; n >= 1; n--) o += `<option value="${n === nholes ? '' : n}" ${cur === n ? 'selected' : ''}>${n === nholes ? 'Hole ' + n + ' (full round)' : 'Hole ' + n}</option>`;
-        return `<div class="grid2" style="margin-bottom:6px;align-items:end">
+        for (let n = sp.last; n >= sp.first; n--) o += `<option value="${n === sp.last ? '' : n}" ${cur === n ? 'selected' : ''}>${n === sp.last ? 'Hole ' + n + (sp.last - sp.first < 17 ? ' (full nine)' : ' (full round)') : 'Hole ' + n}</option>`;
+        const nineSel = nholes === 18 ? `<div class="field"><label>Holes played</label><select data-action="round-nine" data-id="${id}">
+            <option value="" ${!r.nine ? 'selected' : ''}>All 18</option>
+            <option value="front" ${r.nine === 'front' ? 'selected' : ''}>Front 9 (1–9)</option>
+            <option value="back" ${r.nine === 'back' ? 'selected' : ''}>Back 9 (10–18)</option>
+          </select></div>` : '';
+        return `${nineSel ? `<div class="grid2" style="margin-bottom:6px">${nineSel}</div>` : ''}<div class="grid2" style="margin-bottom:6px;align-items:end">
           <div class="field"><label>Matches end after</label><select data-action="round-lasthole" data-id="${id}">${o}</select></div>
           <div class="field"><button class="btn secondary small" data-action="call-round" data-rid="${id}">End unfinished matches now</button></div>
         </div>
@@ -1595,6 +1700,7 @@ function mePickerSheet() {
 function sheet() {
   if (ui.sheet === 'switch') return switchSheet();
   if (ui.sheet === 'me') return mePickerSheet();
+  if (ui.sheet === 'ghin') return ghinFindSheet();
   if (ui.sheet !== 'how') return '';
   const st = S();
   const stand = computeStandings(st);
@@ -1639,7 +1745,11 @@ app.addEventListener('click', (e) => {
     tab: () => { ui.view = t.dataset.tab; ui.scope = ui.view === 'standings' ? 'overall' : ui.scope; render(); },
     'open-round': () => { ui.scope = t.dataset.id; ui.view = 'round'; render(); },
     back: () => { ui.view = ui.view === 'score' ? 'round' : 'rounds'; render(); },
-    'enter-scores': () => { ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
+    'score-one-match': () => { ui.scoreOneMatch = !ui.scoreOneMatch; render(); },
+    'score-both-sides': () => { ui.scoreBothSides = true; render(); },
+    'clear-score': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, ui.holeIdx, null); }),
+    // ui.scope = the round being scored, so "← back" lands on THAT round's page
+    'enter-scores': () => { ui.scope = t.dataset.rid; ui.scoreRoundId = t.dataset.rid; ui.scorePairingId = t.dataset.pid || ui.lastPairing[t.dataset.rid] || null; ui.holeIdx = ui.lastHole[t.dataset.rid] || 0; ui.view = 'score'; render(); },
     scope: () => { ui.scope = t.dataset.scope; render(); },
     'setup-tab': () => { ui.setupTab = t.dataset.tab; render(); },
     'sort-players': () => { const k = t.dataset.key; if (ui.playerSort.key === k) ui.playerSort.dir *= -1; else ui.playerSort = { key: k, dir: 1 }; render(); },
@@ -1650,10 +1760,27 @@ app.addEventListener('click', (e) => {
     step: () => stepScore(t.dataset.rid, t.dataset.target, Number(t.dataset.dir)),
     setpar: () => setPar(t.dataset.rid, t.dataset.target),
     'load-sample': () => { Store.importJSON(JSON.stringify(sampleTournament())); ui.view = 'home'; render(); },
-    'weight-mode': () => Store.update((s) => { s.tournament.weightMode = s.tournament.weightMode === 'normalized' ? 'true' : 'normalized'; }),
+    'weight-mode': () => {
+      if (!setupUnlocked()) return;
+      const toEqual = S().tournament.weightMode !== 'normalized';
+      if (!confirm(toEqual ? 'Switch the Cup to equal-weight rounds for everyone? Every round would count the same, which changes the score and the target.' : 'Switch the Cup back to true points for everyone?')) return;
+      Store.update((s) => { s.tournament.weightMode = toEqual ? 'normalized' : 'true'; });
+    },
     'set-weight': () => { Store.update((s) => { s.tournament.weightMode = t.value; }); try { e.target.blur(); } catch (err) {} render(); },
     sheet: () => { ui.sheet = t.dataset.sheet; render(); },
-    'close-sheet': () => { if (e.target.closest('[data-stop]')) return; ui.sheet = null; render(); },
+    // a tap inside a sheet bubbles up to the backdrop's close action: ignore that,
+    // but a Done/Close button that is itself close-sheet must still close it
+    'close-sheet': () => { if (t.classList && t.classList.contains('sheet-backdrop') && e.target.closest('[data-stop]')) return; ui.sheet = null; ui.ghinFind = null; render(); },
+    'ghin-find': () => openGhinFind(t.dataset.id),
+    'ghin-add': () => openGhinFind(null),
+    'gf-search': () => {
+      const f = ui.ghinFind; if (!f) return;
+      const val = (id) => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      f.first = val('gf-first'); f.last = val('gf-last'); f.state = val('gf-state').toUpperCase();
+      try { if (f.state) localStorage.setItem(GHIN_STATE_KEY, f.state); } catch (err) {}
+      runGhinFind();
+    },
+    'gf-pick': () => ghinPick(Number(t.dataset.i)),
     theme: () => toggleTheme(),
     boost: () => toggleBoost(),
     share: () => shareLink(),
@@ -1674,7 +1801,11 @@ app.addEventListener('click', (e) => {
     },
     'call-round': () => callRound(t.dataset.rid),
     'add-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = r.pairings || []; r.pairings.push({ id: Store.uid('m'), teamA: [], teamB: [] }); }),
-    'del-match': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); }),
+    'del-match': () => {
+      const r0 = round(t.dataset.rid); const p0 = r0 && (r0.pairings || []).find((p) => p.id === t.dataset.mid);
+      if (matchScored(r0, p0) && !confirm('This match already has scores. Remove it? Its scores will stop counting toward the Cup.')) return;
+      Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.pairings = (r.pairings || []).filter((p) => p.id !== t.dataset.mid); });
+    },
     mremove: () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; const p = (r.pairings || []).find((x) => x.id === t.dataset.mid); if (!p) return; const k = t.dataset.side === 'A' ? 'teamA' : 'teamB'; p[k] = (p[k] || []).filter((id) => id !== t.dataset.pid); }),
     'add-squad': () => Store.update((s) => { const id = Store.uid('sq'); const cols = ['#1B7A3D', '#D0021B', '#1B6FB3', '#F5A623', '#7c3aed', '#0891b2']; s.squads[id] = { name: 'Team ' + (Object.keys(s.squads).length + 1), color: cols[Object.keys(s.squads).length % cols.length] }; }),
     'del-squad': () => Store.update((s) => { const ids = Object.keys(s.squads); if (ids.length <= 1) return; const del = t.dataset.id; const fb = ids.find((x) => x !== del); delete s.squads[del]; Object.values(s.players).forEach((p) => { if (p.squadId === del) p.squadId = fb; }); }),
@@ -1707,7 +1838,9 @@ app.addEventListener('change', (e) => {
     'pick-pairing': () => { ui.scorePairingId = v; ui.lastPairing[ui.scoreRoundId] = v; render(); },
     'card-score': () => {
       const h = Number(t.dataset.h);
-      Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, v === '' ? null : parseInt(v, 10)); });
+      const n = v === '' ? null : parseInt(v, 10);
+      if (n != null && (isNaN(n) || n < 1 || n > 15)) { alert('A hole score has to be between 1 and 15.'); render(); return; }
+      Store.update((s) => { const r = s.rounds[t.dataset.rid]; if (r) writeTarget(r, t.dataset.target, h, n); });
     },
     'pick-me': () => Store.setMe(v || null),
     'toggle-import-new': () => { ui.importAsNew = !!e.target.checked; render(); },
@@ -1719,7 +1852,12 @@ app.addEventListener('change', (e) => {
     'squad-name': () => Store.update((s) => { s.squads[t.dataset.id].name = v; }),
     'squad-color': () => Store.update((s) => { s.squads[t.dataset.id].color = v; }),
     'player-name': () => Store.update((s) => { s.players[t.dataset.id].name = v; }),
-    'player-index': () => Store.update((s) => { s.players[t.dataset.id].index = v === '' ? 0 : parseFloat(v); }),
+    'player-index': () => {
+      const pid = t.dataset.id; const nv = v === '' ? 0 : parseFloat(v);
+      const p = player(pid);
+      if (p && Number(p.index) !== nv && playerScored(pid) && !confirm(`${p.name} already has scores in. Changing the index re-scores those matches, finished ones included. Change it?`)) { render(); return; }
+      Store.update((s) => { s.players[pid].index = nv; });
+    },
     'player-ghin': () => Store.update((s) => { s.players[t.dataset.id].ghin = String(v || '').replace(/[^0-9]/g, ''); }),
     'ghin-token': () => { setGhinTokenVal(String(v || '').replace(/^\s*bearer\s+/i, '').replace(/['"]/g, '').trim()); render(); },
     'player-squad': () => Store.update((s) => { s.players[t.dataset.id].squadId = v; }),
@@ -1734,6 +1872,7 @@ app.addEventListener('change', (e) => {
     'round-hcpallow': () => ruleSet(t.dataset.id, { handicapAllowance: v === '' ? 100 : Math.max(0, Math.min(100, Number(v))) }),
     'round-hcpmode': () => ruleSet(t.dataset.id, { handicapMode: v }),
     'round-tee': () => Store.update((s) => { s.rounds[t.dataset.id].defaultTeeId = v; }),
+    'round-nine': () => Store.update((s) => { const r = s.rounds[t.dataset.id]; if (!r) return; if (v === 'front' || v === 'back') r.nine = v; else delete r.nine; delete r.lastHole; }),
     'round-lasthole': () => Store.update((s) => { const r = s.rounds[t.dataset.id]; if (!r) return; if (v) r.lastHole = Number(v); else delete r.lastHole; }),
     'match-lasthole': () => setMatchLastHole(t.dataset.rid, t.dataset.pid, Number(v)),
     'round-tee-override': () => Store.update((s) => { const r = s.rounds[t.dataset.rid]; r.teeOverrides = r.teeOverrides || {}; if (v) r.teeOverrides[t.dataset.pid] = v; else delete r.teeOverrides[t.dataset.pid]; }),
@@ -1853,6 +1992,7 @@ function teamScramCH(r, sid) {
 }
 
 function autoPair(rid) {
+  if (roundScored(round(rid)) && !confirm('This round already has scores. Auto-pair replaces every matchup, and the scores already entered will stop counting. Continue?')) return;
   Store.update((s) => {
     const r = s.rounds[rid];
     const ids = squadIds();
@@ -1921,12 +2061,111 @@ function fetchGhinIndex(num) {
     url = 'https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&golfer_id=' + encodeURIComponent(num) + '&source=GHINcom';
     if (token) opts.headers.authorization = 'Bearer ' + token;
   }
-  return fetch(url, opts).then((r) => {
-    if (r.status === 401) throw new Error('token expired — grab a fresh one from ghin.com');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }).then((data) => { const idx = ghinIndexFrom(data); if (idx == null) throw new Error('no index in response'); return idx; });
+  return fetch(url, opts).then((r) => (r.ok ? r.json() : ghinFail(r)))
+    .then((data) => { const idx = ghinIndexFrom(data); if (idx == null) throw new Error('no index in response'); return idx; });
 }
+/* GHIN error text from a helper (JSON {error}) or GHIN itself, else the HTTP code. */
+function ghinFail(r) {
+  if (r.status === 401) return Promise.reject(new Error('token expired — grab a fresh one from ghin.com'));
+  return r.json().catch(() => ({})).then((d) => { throw new Error((d && d.error) || ('HTTP ' + r.status)); });
+}
+
+/* --- Find in GHIN by name (fills a player's GHIN # + Index, or adds a new
+ * player). Through the helper when GHIN_PROXY_URL is set, else straight to
+ * GHIN with this device's token. --- */
+const GHIN_STATE_KEY = 'ghin-state';
+function ghinState() { try { return localStorage.getItem(GHIN_STATE_KEY) || 'NC'; } catch (e) { return 'NC'; } }
+function fmtIndex(n) { return n == null ? '—' : (n < 0 ? '+' + Math.abs(n) : String(n)); } // plus handicaps stored negative
+function ghinGolfer(g) {
+  if (!g) return null;
+  if (g.first_name != null || g.last_name != null || g.handicap_index != null) { // raw GHIN shape
+    const raw = g.handicap_index ?? g.hi_value;
+    const n = raw == null || raw === '' ? null : (typeof raw === 'string' ? Number(raw.replace('+', '-')) : Number(raw));
+    return { ghin: String(g.ghin ?? g.ghin_number ?? g.golfer_id ?? g.id ?? ''), name: [g.first_name, g.last_name].filter(Boolean).join(' '), club: g.club_name || '', state: g.state || '', index: n == null || isNaN(n) ? null : n };
+  }
+  return { ghin: String(g.ghin || ''), name: g.name || '', club: g.club || '', state: g.state || '', index: g.index == null ? null : Number(g.index) }; // helper shape
+}
+function fetchGhinSearch(first, last, state) {
+  const token = getGhinToken();
+  const qs = 'last=' + encodeURIComponent(last) + (first ? '&first=' + encodeURIComponent(first) : '') + (state ? '&state=' + encodeURIComponent(state) : '');
+  let url; const opts = { headers: {} };
+  if (GHIN_PROXY_URL) {
+    url = GHIN_PROXY_URL + (GHIN_PROXY_URL.includes('?') ? '&' : '?') + qs;
+    if (token) url += '&token=' + encodeURIComponent(token);
+  } else {
+    url = 'https://api2.ghin.com/api/v1/golfers.json?status=Active&from_ghin=true&per_page=25&sorting_criteria=full_name&order=asc&page=1&source=GHINcom&last_name=' + encodeURIComponent(last) + (first ? '&first_name=' + encodeURIComponent(first) : '') + (state ? '&state=' + encodeURIComponent(state) : '');
+    if (token) opts.headers.authorization = 'Bearer ' + token;
+  }
+  return fetch(url, opts).then((r) => (r.ok ? r.json() : ghinFail(r))).then((data) => {
+    if (data && data.error) throw new Error(data.error);
+    const list = data && Array.isArray(data.golfers) ? data.golfers : (Array.isArray(data) ? data : []);
+    return list.map(ghinGolfer).filter((g) => g && g.ghin);
+  });
+}
+/* Search by first + last; nicknames (Jimbo, Dave) often miss, so with no hit
+ * retry on the last name alone and float same-initial first names to the top. */
+function runGhinFind() {
+  const f = ui.ghinFind; if (!f) return;
+  if (!f.last) { f.error = 'Type a last name.'; f.results = null; render(); return; }
+  if (!ghinReady()) return;
+  f.loading = true; f.error = ''; f.results = null; f.broadened = false; render();
+  const initial = (f.first || '').charAt(0).toLowerCase();
+  fetchGhinSearch(f.first, f.last, f.state)
+    .then((res) => (res.length || !f.first ? res : fetchGhinSearch('', f.last, f.state).then((all) => { f.broadened = true; return all; })))
+    .then((res) => {
+      if (ui.ghinFind !== f) return;
+      f.results = initial ? res.slice().sort((a, b) => (b.name.toLowerCase().startsWith(initial) ? 1 : 0) - (a.name.toLowerCase().startsWith(initial) ? 1 : 0)) : res;
+    })
+    .catch((e) => { if (ui.ghinFind === f) f.error = ghinErr(e); })
+    .then(() => { if (ui.ghinFind === f) { f.loading = false; render(); } });
+}
+function openGhinFind(pid) {
+  const p = pid ? player(pid) : null;
+  const parts = p ? String(p.name || '').trim().split(/\s+/) : [];
+  ui.ghinFind = { pid: p ? pid : null, first: parts.length > 1 ? parts[0] : '', last: parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || ''), state: ghinState(), results: null, added: {} };
+  ui.sheet = 'ghin';
+  if (ui.ghinFind.last) runGhinFind(); else render();
+}
+function ghinFindSheet() {
+  const f = ui.ghinFind || {};
+  const target = f.pid ? player(f.pid) : null;
+  const rows = (f.results || []).map((g, i) => `<div class="list-row" style="justify-content:space-between;gap:10px">
+      <div style="min-width:0"><b>${esc(g.name || '?')}</b><div class="muted" style="font-size:12px">${esc([g.club, g.state].filter(Boolean).join(' · '))}${g.club || g.state ? ' · ' : ''}GHIN ${esc(g.ghin)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0"><span class="num" style="font-weight:800">${esc(fmtIndex(g.index))}</span>
+      ${f.added && f.added[g.ghin] ? '<span class="ok-tag">Added ✓</span>' : `<button class="btn small" data-action="gf-pick" data-i="${i}">${target ? 'Use' : 'Add'}</button>`}</div>
+    </div>`).join('');
+  const status = f.loading ? '<div class="muted">Searching GHIN…</div>'
+    : f.error ? `<div class="tip">${esc(f.error)}</div>`
+    : f.results ? (f.results.length
+      ? (f.broadened ? `<div class="muted" style="font-size:12px;margin-bottom:6px">No exact match for “${esc(f.first)}”, so here is everyone named ${esc(f.last)}${f.state ? ' in ' + esc(f.state) : ''}.</div>` : '')
+      : '<div class="muted">No active golfers found. Try the last name only, or another state.</div>') : '';
+  return `<div class="sheet-backdrop" data-action="close-sheet"><div class="sheet" data-stop="1">
+    <h2>${target ? 'Find ' + esc(target.name) + ' in GHIN' : 'Add players from GHIN'}</h2>
+    <div class="grid3">
+      <div class="field"><label>First</label><input id="gf-first" value="${esc(f.first || '')}" autocomplete="off" placeholder="optional"></div>
+      <div class="field"><label>Last</label><input id="gf-last" value="${esc(f.last || '')}" autocomplete="off"></div>
+      <div class="field"><label>State</label><input id="gf-state" value="${esc(f.state || '')}" maxlength="2" autocomplete="off" placeholder="NC"></div>
+    </div>
+    <button class="btn" data-action="gf-search">Search GHIN</button>
+    <div style="margin:12px 0">${status}${rows}</div>
+    <button class="btn secondary" data-action="close-sheet">Done</button>
+  </div></div>`;
+}
+function ghinPick(i) {
+  const f = ui.ghinFind; const g = f && f.results && f.results[i];
+  if (!g) return;
+  if (f.pid) {
+    const cur = player(f.pid);
+    if (cur && g.index != null && Number(cur.index) !== g.index && playerScored(f.pid) && !confirm(`${cur.name} already has scores in. Using this GHIN index re-scores those matches. Use it anyway?`)) return;
+    Store.update((s) => { const p = s.players[f.pid]; if (!p) return; p.ghin = g.ghin; if (g.index != null) p.index = g.index; });
+    ui.sheet = null; ui.ghinFind = null; render();
+    return;
+  }
+  // add a new player (sheet stays open so you can pull in the next one)
+  Store.update((s) => { const id = Store.uid('p'); s.players[id] = { id, name: g.name || 'New Player', index: g.index == null ? 0 : g.index, squadId: Object.keys(s.squads)[0] || '', defaultTeeId: '', ghin: g.ghin }; });
+  f.added[g.ghin] = true; render();
+}
+
 function ghinErr(e) {
   const m = e && e.message || String(e);
   if (/Failed to fetch|NetworkError|Load failed/i.test(m) && !GHIN_PROXY_URL) {
@@ -1936,6 +2175,7 @@ function ghinErr(e) {
 }
 function ghinReady() {
   if (getGhinToken() || GHIN_PROXY_URL) return true;
+  ui.sheet = null; ui.ghinFind = null; render();
   alert('Paste your GHIN token first — open the "GHIN auto-fill" box at the top of Players.');
   return false;
 }
@@ -1943,6 +2183,7 @@ function ghinRefresh(id) {
   const p = player(id); if (!p) return;
   const num = String(p.ghin || '').replace(/[^0-9]/g, '');
   if (!num) { alert('Enter a GHIN number for this player first.'); return; }
+  if (playerScored(id) && !confirm(`${p.name} already has scores in. A new index from GHIN re-scores those matches, finished ones included. Refresh anyway?`)) return;
   if (!ghinReady()) return;
   ui.ghinLoading = ui.ghinLoading || {}; ui.ghinLoading[id] = true; render();
   const done = () => { delete ui.ghinLoading[id]; render(); };
@@ -1954,6 +2195,7 @@ function ghinRefresh(id) {
 function ghinRefreshAll() {
   const ids = Object.keys(S().players).filter((id) => String(S().players[id].ghin || '').replace(/\D/g, ''));
   if (!ids.length) { alert('No players have a GHIN number yet.'); return; }
+  if (anyScored() && !confirm('Scores are already in. GHIN updates indexes every day, so refreshing now can re-score matches that are finished. Refresh all anyway?')) return;
   if (!ghinReady()) return;
   ui.ghinLoading = ui.ghinLoading || {}; ids.forEach((id) => { ui.ghinLoading[id] = true; }); render();
   const errs = [];

@@ -123,23 +123,27 @@ export function foursomesHandicap(chs, allowancePct) {
 /* Resolve a match from two net-per-hole arrays.
  * result: 'A' | 'B' | 'AS' | 'IP'. status is A-minus-B. */
 export function matchFromNets(netsA, netsB, holesCount) {
-  let status = 0, played = 0;
+  let status = 0, played = 0, decidedAt = null;
   const line = [];
+  const H = holesCount || netsA.length;
   for (let i = 0; i < netsA.length; i++) {
-    if (netsA[i] == null || netsB[i] == null) { line.push(status); continue; }
-    played++;
-    if (netsA[i] < netsB[i]) status++;
-    else if (netsB[i] < netsA[i]) status--;
+    // Once a side leads by more than the holes left, the match is over: holes
+    // the group plays out afterwards (bye holes) must not change "4 & 3".
+    if (decidedAt == null && netsA[i] != null && netsB[i] != null) {
+      played++;
+      if (netsA[i] < netsB[i]) status++;
+      else if (netsB[i] < netsA[i]) status--;
+      if (Math.abs(status) > H - played) decidedAt = i + 1;
+    }
     line.push(status);
   }
-  const H = holesCount || netsA.length;
   const remaining = H - played;
   let result;
   if (played === 0) result = 'IP';
   else if (Math.abs(status) > remaining) result = status > 0 ? 'A' : 'B';
   else if (played >= H) result = status > 0 ? 'A' : status < 0 ? 'B' : 'AS';
   else result = 'IP';
-  return { status, played, remaining, line, result };
+  return { status, played, remaining, line, result, decidedAt };
 }
 
 /* Human-readable match state: "3 & 2", "1 UP", "AS thru 12". */

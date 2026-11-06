@@ -95,6 +95,47 @@ fireChange({ action: 'player-ghin', id: 'parker' }, '1234567');
 fireClick({ action: 'ghin-refresh', id: 'parker' }); check('ghin');
 ['index', 'index', 'team', 'name'].forEach((k) => { fireClick({ action: 'sort-players', key: k }); });
 check('players-sorted');
+// GHIN find by name + add from GHIN (GHIN faked; token path, no helper deployed)
+{
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    const m = /[?&]first_name=([^&]*)/.exec(String(url)); // (this harness stubs out URL)
+    const first = m ? decodeURIComponent(m[1]).toLowerCase() : '';
+    const all = [{ ghin: 5550001, first_name: 'Robert', last_name: 'Bernie', club_name: 'Talamore', state: 'NC', handicap_index: '7.1' },
+      { ghin: 5550002, first_name: 'Bernard', last_name: 'Bernie', club_name: 'Mid South', state: 'NC', handicap_index: '+0.4' }];
+    const list = all.filter((g) => !first || g.first_name.toLowerCase().startsWith(first));
+    return { ok: true, status: 200, json: async () => ({ golfers: list }) };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  fireClick({ action: 'setup-tab', tab: 'players' });
+  if (appEl.innerHTML.includes('data-action="ghin-add"') && appEl.innerHTML.includes('data-action="ghin-find"')) console.log('ok ghin find/add buttons'); else { errors++; console.log('GHIN find/add buttons missing'); }
+  fireChange({ action: 'ghin-token' }, 'Bearer TESTTOKEN');
+  const bernie = Object.values(Store.get().players).find((p) => p.name === 'Bernie');
+  if (bernie) {
+    Store.update((s) => { s.players[bernie.id].ghin = ''; });
+    fireClick({ action: 'ghin-find', id: bernie.id }); await tick(); await tick();
+    // one-word name -> last name search; nickname miss isn't possible here, so expect both results
+    if (appEl.innerHTML.includes('Find Bernie in GHIN') && appEl.innerHTML.includes('Robert Bernie') && appEl.innerHTML.includes('+0.4')) console.log('ok ghin find results'); else { errors++; console.log('GHIN find results missing', (appEl.innerHTML.match(/<h2>Find[\s\S]{0,900}/) || ['no sheet'])[0].replace(/\s+/g, ' ').slice(0, 900)); }
+    fireClick({ action: 'gf-pick', i: '0' }); await tick();
+    const b2 = Store.get().players[bernie.id];
+    if (b2.ghin === '5550001' && b2.index === 7.1) console.log('ok ghin pick fills GHIN # + index'); else { errors++; console.log('GHIN pick wrong', b2.ghin, b2.index); }
+  } else { errors++; console.log('no Bernie in sample'); }
+  const before = Object.keys(Store.get().players).length;
+  fireClick({ action: 'ghin-add' }); await tick();
+  ui_find: {
+    // empty name: no search yet; the sheet is open and asks for a last name
+    if (!appEl.innerHTML.includes('Add players from GHIN')) { errors++; console.log('GHIN add sheet missing'); break ui_find; }
+    console.log('ok ghin add sheet');
+  }
+  fireClick({ action: 'close-sheet' }); check('ghin-sheet-closed');
+  if (!appEl.innerHTML.includes('Add players from GHIN')) console.log('ok done button closes sheet'); else { errors++; console.log('sheet did not close'); }
+  if (Object.keys(Store.get().players).length === before) console.log('ok nothing added without a pick'); else { errors++; console.log('player added unexpectedly'); }
+  if (seen.every((u) => u.startsWith('https://api2.ghin.com/'))) console.log('ok direct GHIN calls without helper'); else { errors++; console.log('unexpected GHIN url', seen); }
+  fireChange({ action: 'ghin-token' }, '');
+  globalThis.fetch = realFetch;
+}
 fireClick({ action: 'setup-tab', tab: 'rounds' }); check('rounds-with-ch');
 // print scorecards for all rounds (exercises card builder across all 3 formats)
 try { fireClick({ action: 'print-cards' }); console.log('ok print-cards built'); } catch (e) { errors++; console.log('PRINT ERR', e.message); }
@@ -184,6 +225,73 @@ fireClick({ action: 'close-sheet' });
 fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
 fireChange({ action: 'round-format', id: 'r2' }, 'fourball'); // back to fourball for the skins checks below
 
+// rain day: a round can play only the back nine
+{
+  if (appEl.innerHTML.includes('data-action="round-nine"')) console.log('ok holes-played select'); else { errors++; console.log('HOLES-played select missing'); }
+  fireChange({ action: 'round-nine', id: 'r2' }, 'back');
+  if (Store.get().rounds.r2.nine === 'back') console.log('ok round set to back nine'); else { errors++; console.log('NINE not stored'); }
+  fireClick({ action: 'enter-scores', rid: 'r2' });
+  if (/HOLE 10 · BACK 9/.test(appEl.innerHTML) && /data-dir="-1" disabled/.test(appEl.innerHTML)) console.log('ok back nine starts at hole 10'); else { errors++; console.log('BACK nine start wrong', (appEl.innerHTML.match(/HOLE [^<]*/) || [''])[0]); }
+  fireClick({ action: 'score-mode', mode: 'card' });
+  if (appEl.innerHTML.includes('>In<') && !appEl.innerHTML.includes('>Out<')) console.log('ok full card shows only the back nine'); else { errors++; console.log('FULL card nine wrong'); }
+  fireClick({ action: 'score-mode', mode: 'hole' });
+  fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'rounds' });
+  fireChange({ action: 'round-nine', id: 'r2' }, '');
+  if (Store.get().rounds.r2.nine == null) console.log('ok back to all 18'); else { errors++; console.log('NINE not cleared'); }
+}
+
+// singles: a group of 4 is scored on one screen (both matches), with a toggle
+{
+  // earlier steps left r1 with 2-player tee times; clear them so matches pair up as listed (1+2, 3+4, ...)
+  Store.update((s) => { s.rounds.r1.teeTimes = []; });
+  const r1 = Store.get().rounds.r1;
+  const want = (r1.pairings || []).length;
+  fireClick({ action: 'enter-scores', rid: 'r1', pid: r1.pairings[0].id }); check('singles-group');
+  const rows = [...new Set([...appEl.innerHTML.matchAll(/data-action="setpar" data-rid="r1" data-target="(player:[^"]+)"/g)].map((m) => m[1]))];
+  if (want >= 2 && rows.length === 4 && appEl.innerHTML.includes('Score just one match') && (appEl.innerHTML.match(/class="livematch"/g) || []).length === 2) console.log('ok singles group screen: 4 players, 2 matches');
+  else { errors++; console.log('SINGLES group screen wrong', rows.length, want); }
+  fireClick({ action: 'score-one-match' });
+  const rows1 = [...new Set([...appEl.innerHTML.matchAll(/data-action="setpar" data-rid="r1" data-target="(player:[^"]+)"/g)].map((m) => m[1]))];
+  if (rows1.length === 2) console.log('ok one-match toggle'); else { errors++; console.log('ONE-MATCH toggle wrong', rows1.length); }
+  fireClick({ action: 'score-one-match' });
+  // clear one hole's score (on whichever hole the screen is showing)
+  const tg = rows[0];
+  const pid = tg.split(':')[1];
+  const hNow = Number((appEl.innerHTML.match(/HOLE (\d+) of/) || [0, 1])[1]) - 1;
+  fireClick({ action: 'setpar', rid: 'r1', target: tg });
+  const setV = (Store.get().rounds.r1.scores[pid] || {})[hNow];
+  fireClick({ action: 'clear-score', rid: 'r1', target: tg });
+  const cleared = (Store.get().rounds.r1.scores[pid] || {})[hNow];
+  if (setV != null && cleared == null) console.log('ok clear-score blanks the hole'); else { errors++; console.log('CLEAR-score', setV, cleared); }
+  // card score outside 1..15 is refused; a normal one is kept
+  Store.update((s) => { if (s.rounds.r1.scores[pid]) delete s.rounds.r1.scores[pid][16]; });
+  fireChange({ action: 'card-score', rid: 'r1', target: tg, h: '16' }, '45');
+  const after45 = (Store.get().rounds.r1.scores[pid] || {})[16];
+  fireChange({ action: 'card-score', rid: 'r1', target: tg, h: '16' }, '5');
+  const after5 = (Store.get().rounds.r1.scores[pid] || {})[16];
+  if (after45 == null && after5 === 5) console.log('ok card score 45 refused, 5 kept'); else { errors++; console.log('CARD score check', after45, after5); }
+  // back from scoring lands on the scored round's page
+  fireClick({ action: 'tab', tab: 'home' });
+  fireClick({ action: 'enter-scores', rid: 'r3' }); fireClick({ action: 'back' });
+  if (appEl.innerHTML.includes(Store.get().rounds.r3.name)) console.log('ok back lands on the scored round'); else { errors++; console.log('BACK went to the wrong round'); }
+}
+// 4-man scramble across two groups: my side editable, theirs read-only
+{
+  const red = Object.keys(Store.get().players).filter((k) => Store.get().players[k].squadId === 'red').slice(0, 4);
+  const blue = Object.keys(Store.get().players).filter((k) => Store.get().players[k].squadId === 'blue').slice(0, 4);
+  Store.update((s) => { const r = s.rounds.r3; r.format = 'scramble'; r.pairings = [{ id: 'mx', teamA: red, teamB: blue }]; r.teamScores = {}; });
+  Store.setMe(red[0]);
+  fireClick({ action: 'enter-scores', rid: 'r3', pid: 'mx' }); check('scramble-4v4-score');
+  const editable = [...new Set([...appEl.innerHTML.matchAll(/data-action="setpar" data-rid="r3" data-target="(team:[^"]+)"/g)].map((m) => m[1]))];
+  if (editable.length === 1 && editable[0] === 'team:mx:A' && appEl.innerHTML.includes('Their own group')) console.log('ok 4v4: only my side editable');
+  else { errors++; console.log('4v4 editable rows', editable); }
+  fireClick({ action: 'score-both-sides' });
+  const both = [...new Set([...appEl.innerHTML.matchAll(/data-action="setpar" data-rid="r3" data-target="(team:[^"]+)"/g)].map((m) => m[1]))];
+  if (both.length === 2) console.log('ok 4v4: enter-it-here-too unlocks both'); else { errors++; console.log('4v4 both sides', both); }
+  Store.setMe(null);
+  Store.update((s) => { s.rounds.r3.format = 'shamble'; });
+}
+
 // setup PIN lock: setting a PIN locks THIS device immediately (no lock-now needed)
 fireClick({ action: 'tab', tab: 'setup' }); fireClick({ action: 'setup-tab', tab: 'tournament' });
 fireChange({ action: 'setup-pin' }, '1234');
@@ -192,6 +300,12 @@ if (appEl.innerHTML.includes('Setup is locked')) console.log('ok setting PIN loc
 // locked also makes the skins/money editor on the round page read-only
 fireClick({ action: 'tab', tab: 'rounds' }); fireClick({ action: 'open-round', id: 'r2' });
 if (!appEl.innerHTML.includes('data-action="skin-enabled"') && appEl.innerHTML.includes('change in Setup')) console.log('ok skins/money read-only when locked'); else { errors++; console.log('SKINS editable while locked'); }
+// locked: players can't flip the Cup to equal-weight from Standings
+fireClick({ action: 'tab', tab: 'standings' });
+if (!appEl.innerHTML.includes('data-action="weight-mode"')) console.log('ok weight toggle hidden when locked'); else { errors++; console.log('WEIGHT toggle shown while locked'); }
+const wm = Store.get().tournament.weightMode;
+fireClick({ action: 'weight-mode' });
+if (Store.get().tournament.weightMode === wm) console.log('ok weight-mode refused when locked'); else { errors++; console.log('WEIGHT changed while locked'); }
 fireClick({ action: 'tab', tab: 'setup' });
 fireChange({ action: 'setup-pin-enter' }, '9999');
 if (appEl.innerHTML.includes('Setup is locked')) console.log('ok wrong pin stays locked'); else { errors++; console.log('LOCK bypassed by wrong pin'); }

@@ -373,13 +373,13 @@ function world(format, teamA, teamB, idx) {
   eq(resolveRound(st, r).matches[0].m.result, 'IP', 'no last hole: 2 UP thru 15 is still in play');
   r.lastHole = 15;
   let m = resolveRound(st, r).matches[0];
-  eq([m.m.result, m.m.status, m.m.remaining, m.lastHole, m.shortened], ['A', 2, 0, 15, true], 'round last hole 15: 2 UP after 15 wins');
+  eq([m.m.result, m.m.status, m.m.remaining, m.lastHole, m.shortened], ['A', 2, 1, 15, true], 'round last hole 15: 2 UP with 1 to play wins 2 & 1');
   eq(resolveRound(st, r).status, 'final', 'round is final once every match reaches its last hole');
   r.lastHoles = { m1: 18 };
   eq(resolveRound(st, r).matches[0].m.result, 'IP', 'a match setting beats the round setting');
   r.lastHoles = { m1: 13 };
   m = resolveRound(st, r).matches[0];
-  eq([m.m.result, m.m.played], ['A', 13], 'last hole 13: holes 14-15 do not count');
+  eq([m.m.result, m.m.played], ['A', 12], 'last hole 13: decided 2 & 1 after 12, holes 14-15 do not count');
   r.lastHoles = { m1: 1 };
   eq(resolveRound(st, r).matches[0].m.result, 'A', 'last hole 1: 1 UP after 1 wins');
   delete r.lastHole; r.lastHoles = {};
@@ -426,6 +426,75 @@ function world(format, teamA, teamB, idx) {
   for (let h = 0; h < 18; h++) { sc.teamScores.p40.A[h] = 4; sc.teamScores.p40.B[h] = 4; }
   const s1 = computeStandings(st);
   eq([s1.rounds[3].raw.red, s1.rounds[3].raw.blue], [1.5, 1.5], 'halved 3-point match = 1½ each');
+}
+
+/* ---------------- bye holes, sunset vs finished matches, expected points ---------------- */
+{
+  // A wins 1-4, halves 5-15 -> 4 & 3 after 15; then B wins the 3 bye holes
+  const na = [], nb = [];
+  for (let h = 0; h < 18; h++) { na.push(h < 4 ? 3 : (h >= 15 ? 5 : 4)); nb.push(4); }
+  const m = G.matchFromNets(na, nb, 18);
+  eq([m.result, m.status, m.remaining, m.decidedAt, G.matchTag(m, 'Red', 'Blue')], ['A', 4, 3, 15, 'Red 4 & 3'], 'bye holes after a closeout do not change 4 & 3');
+  const st = world('singles', ['a'], ['b'], { a: 0, b: 0 });
+  const r = st.rounds.r;
+  r.scores = { a: {}, b: {} };
+  for (let h = 0; h < 18; h++) { r.scores.a[h] = h === 17 ? 3 : 4; r.scores.b[h] = 4; } // A wins on 18: 1 UP
+  r.lastHole = 16; // commissioner calls the round at 16 after this match finished
+  const res = resolveRound(st, r).matches[0];
+  eq([res.m.result, res.m.status, res.lastHole, res.shortened], ['A', 1, 18, false], 'round-wide sunset leaves a finished match alone');
+  r.lastHoles = { m1: 16 };
+  eq(resolveRound(st, r).matches[0].m.result, 'AS', 'a match\'s own last hole still applies');
+}
+{
+  // Bogey-Man after the draft: 8 v 8, no matchups built yet
+  const st = world('fourball', ['a1'], ['b1'], {});
+  st.players = {};
+  for (let i = 0; i < 16; i++) st.players['p' + i] = { id: 'p' + i, name: 'p' + i, index: 0, squadId: i % 2 ? 'blue' : 'red' };
+  const mk = (id, format, per, ppm) => ({ id, courseId: 'c', format, perSide: per, defaultTeeId: 't', status: 'auto', scoringRule: { pointsPerMatch: ppm }, pairings: [], scores: {}, teamScores: {} });
+  st.rounds = { fb: mk('fb', 'fourball', 2, 2), fs: mk('fs', 'foursomes', 2, 2), sg: mk('sg', 'singles', 1, 1), sc: mk('sc', 'scramble', 4, 3) };
+  st.tournament.roundOrder = ['fb', 'fs', 'sg', 'sc'];
+  let s = computeStandings(st);
+  eq([s.rounds.map((x) => x.pointsAvailable), s.totalAvailable, s.target, s.rounds[0].expected], [[8, 8, 8, 6], 30, 15.5, true], 'no matchups yet: expected 8/8/8/6, first to 15.5');
+  // Friday paired and finished 10-6 (red wins 3 fourballs, 2 foursomes), Saturday not paired yet
+  const R = Object.keys(st.players).filter((k) => st.players[k].squadId === 'red'), B = Object.keys(st.players).filter((k) => st.players[k].squadId === 'blue');
+  ['fb', 'fs'].forEach((rid, k) => {
+    const rd = st.rounds[rid];
+    rd.pairings = [0, 1, 2, 3].map((i) => ({ id: rid + i, teamA: R.slice(i * 2, i * 2 + 2), teamB: B.slice(i * 2, i * 2 + 2) }));
+    const redWins = k === 0 ? 3 : 2;
+    rd.pairings.forEach((p, i) => {
+      const aWin = i < redWins;
+      if (rd.format === 'foursomes') { rd.teamScores[p.id] = { A: {}, B: {} }; for (let h = 0; h < 18; h++) { rd.teamScores[p.id].A[h] = aWin ? 3 : 5; rd.teamScores[p.id].B[h] = 4; } }
+      else [...p.teamA, ...p.teamB].forEach((pid) => { rd.scores[pid] = {}; for (let h = 0; h < 18; h++) rd.scores[pid][h] = p.teamA.includes(pid) ? (aWin ? 3 : 5) : 4; });
+    });
+  });
+  s = computeStandings(st);
+  eq([s.cup.red, s.cup.blue, s.totalAvailable, s.target, s.clinched], [10, 6, 30, 15.5, null], 'Friday night 10-6 with Saturday unpaired: still first to 15.5, nobody clinched');
+}
+
+/* ---------------- 9-hole rounds (rain day: front 9 one format, back 9 another) ---------------- */
+{
+  const st = world('fourball', ['a1', 'a2'], ['b1', 'b2'], { a1: 0, a2: 0, b1: 0, b2: 0 });
+  const r = st.rounds.r;
+  r.nine = 'back';
+  r.scores = { a1: {}, a2: {}, b1: {}, b2: {} };
+  for (let h = 9; h < 18; h++) ['a1', 'a2', 'b1', 'b2'].forEach((p) => { r.scores[p][h] = (p === 'a1' && h === 9) ? 3 : 4; }); // A wins 10, halves the rest
+  let res = resolveRound(st, r);
+  let m = res.matches[0];
+  eq([m.m.result, m.m.status, m.m.played, m.firstHole, m.lastHole, m.endHole, m.shortened, res.status], ['A', 1, 9, 10, 18, 18, false, 'final'], 'back nine: 1 UP over holes 10-18 is final');
+  r.lastHoles = { m1: 16 };
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, m.m.played, m.lastHole, m.shortened], ['A', 7, 16, true], 'back nine + sunset at 16: decided over 10-16');
+  r.lastHoles = { m1: 5 };
+  eq(resolveRound(st, r).matches[0].lastHole, 10, 'a last hole before the nine starts clamps to its first hole');
+  // front nine: 3 UP after 7 -> 3 & 2; back-nine scores are ignored
+  r.nine = 'front'; r.lastHoles = {};
+  r.scores = { a1: {}, a2: {}, b1: {}, b2: {} };
+  for (let h = 0; h < 18; h++) ['a1', 'a2', 'b1', 'b2'].forEach((p) => { r.scores[p][h] = (p === 'a1' && h < 3) ? 3 : (p.startsWith('b') && h >= 9 ? 2 : 4); });
+  m = resolveRound(st, r).matches[0];
+  eq([m.m.result, G.matchTag(m.m, 'Red', 'Blue'), m.endHole, m.lastHole], ['A', 'Red 3 & 2', 7, 9], 'front nine: 3 & 2 after 7, back nine ignored');
+  // points per match unchanged for a nine
+  r.scoringRule.pointsPerMatch = 2;
+  eq([resolveRound(st, r).raw.red, resolveRound(st, r).pointsAvailable], [2, 2], 'a nine-hole match still worth its points');
 }
 
 /* ---------------- CSV keeps the new format ---------------- */
